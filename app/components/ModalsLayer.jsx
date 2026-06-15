@@ -870,7 +870,9 @@ export default function ModalsLayer({ callbacksRef }) {
             selectedScannedCodes={cb.current.selectedScannedCodes}
             onClose={() => setScanConfirmModalOpen(false)}
             onToggle={cb.current.toggleScannedCode}
-            onConfirm={cb.current.confirmScanImport}
+            onConfirm={(targetGroupId, expandAfterAdd, addMode) =>
+              cb.current.confirmScanImport?.(targetGroupId, expandAfterAdd, addMode)
+            }
             onRetryOcr={cb.current.handleRetryOcr}
             refreshing={cb.current.refreshing}
             groups={cb.current.groups}

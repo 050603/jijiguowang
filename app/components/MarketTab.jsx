@@ -17,10 +17,9 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useReactTable, getCoreRowModel, flexRender } from '@tanstack/react-table';
-import { fetchFundValuationRanking, fetchFundPeriodReturns } from '../api/fund';
+import { fetchFundValuationRanking, fetchFundPeriodReturns, fetchHotSectorsFromEastmoney } from '../api/fund';
 import { cn } from '@/lib/utils';
 import { useStorageStore, useUserStore, useModalStore } from '../stores';
-import { supabase } from '../lib/supabase';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Empty, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia } from '@/components/ui/empty';
 import { Button } from '@/components/ui/button';
@@ -81,15 +80,12 @@ export default function MarketTab({ onAddFund, getFundCardProps, isActive }) {
   const toggleFavorite = useStorageStore((s) => s.toggleFavorite);
   const funds = useStorageStore((s) => s.funds);
 
-  // Queries for Hot Sectors (Supabase)
+  // Queries for Hot Sectors (Eastmoney real-time)
   const { data: sectorEstimates, isLoading: sectorsLoading } = useQuery({
     queryKey: ['hotSectors'],
     queryFn: async () => {
       try {
-        if (!supabase) return [];
-        const { data, error } = await supabase.from('fund_topic').select('*');
-        if (error) throw error;
-        return data || [];
+        return await fetchHotSectorsFromEastmoney();
       } catch (e) {
         console.error('Fetch hot sectors error:', e);
         return [];
@@ -546,7 +542,7 @@ export default function MarketTab({ onAddFund, getFundCardProps, isActive }) {
                   display: flex !important;
                   width: 100%;
                   gap: 0 !important;
-                  padding: 12px 16px !important;
+                  padding: 14px 16px !important;
                   --row-bg: var(--bg);
                   background-color: var(--row-bg) !important;
                   transition: background-color 0.15s ease;
@@ -572,6 +568,14 @@ export default function MarketTab({ onAddFund, getFundCardProps, isActive }) {
                 }
                 [data-theme="light"] .market-ranking-table-header {
                   background: rgba(0, 0, 0, 0.04) !important;
+                }
+                @media (max-width: 640px) {
+                  .market-ranking-table-row {
+                    padding: 12px 14px !important;
+                  }
+                  .market-ranking-table-header {
+                    padding: 10px 14px !important;
+                  }
                 }
               `}</style>
 

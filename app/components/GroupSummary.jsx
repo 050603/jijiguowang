@@ -101,8 +101,8 @@ export default function GroupSummary({
   const [showTodayPercent, setShowTodayPercent] = useState(false);
   const [isMasked, setIsMasked] = useState(masked ?? false);
   const [isAssetMasked, setIsAssetMasked] = useState(false);
-  const assetSize = 26;
-  const metricSize = 20;
+  const assetSize = isMobile ? 22 : 26;
+  const metricSize = isMobile ? 16 : 20;
 
   useEffect(() => {
     if (typeof masked === 'boolean') {
@@ -226,7 +226,7 @@ export default function GroupSummary({
         <div className="row" style={{ alignItems: 'flex-end', justifyContent: 'space-between', minWidth: 0 }}>
           <div style={{ flex: 4, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <div className="muted" style={{ fontSize: '12px' }} key={portfolioTabId}>
+              <div className="muted" style={{ fontSize: isMobile ? '11px' : '12px' }} key={portfolioTabId}>
                 {portfolioScopeLabel}
               </div>
               <Tooltip>
@@ -259,7 +259,7 @@ export default function GroupSummary({
             </div>
             <div
               style={{
-                fontSize: '24px',
+                fontSize: isMobile ? '20px' : '24px',
                 fontWeight: 700,
                 fontFamily: 'var(--font-mono)',
                 minWidth: 0,
@@ -291,7 +291,7 @@ export default function GroupSummary({
               <div
                 className="muted"
                 style={{
-                  fontSize: '12px',
+                  fontSize: isMobile ? '11px' : '12px',
                   marginBottom: 4,
                   display: 'flex',
                   justifyContent: 'flex-end',
@@ -312,7 +312,7 @@ export default function GroupSummary({
                     : 'muted'
                 }
                 style={{
-                  fontSize: '18px',
+                  fontSize: isMobile ? '15px' : '18px',
                   fontWeight: 700,
                   fontFamily: 'var(--font-mono)',
                   cursor: summary.hasAnyTodayData ? 'pointer' : 'default',
@@ -367,7 +367,7 @@ export default function GroupSummary({
               <div
                 className="muted"
                 style={{
-                  fontSize: '12px',
+                  fontSize: isMobile ? '11px' : '12px',
                   marginBottom: 4,
                   display: 'flex',
                   justifyContent: 'flex-end',
@@ -380,7 +380,7 @@ export default function GroupSummary({
               <div
                 className={summary.totalHoldingReturn > 0 ? 'up' : summary.totalHoldingReturn < 0 ? 'down' : ''}
                 style={{
-                  fontSize: '18px',
+                  fontSize: isMobile ? '15px' : '18px',
                   fontWeight: 700,
                   fontFamily: 'var(--font-mono)',
                   cursor: 'pointer',

@@ -15,7 +15,7 @@ import {
 import ReactDOM from 'react-dom';
 import { toast as sonnerToast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useModalStore } from '../stores';
+import { storageStore, useModalStore, useStorageStore } from '../stores';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
 import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
@@ -44,7 +44,6 @@ import {
   fetchFundSecidsBatch,
   fetchEastmoneySectorQuotesBatch
 } from '@/app/api/fund';
-import { storageStore } from '../stores';
 import { asyncPool } from '@/app/lib/asyncHelper';
 import { Badge } from '@/components/ui/badge';
 import { getTagThemeBadgeProps } from '@/app/components/AddTagDialog';
@@ -83,7 +82,12 @@ const MOBILE_COLUMNS_DEFAULT_HIDDEN_IF_PERSONALIZED = new Set([
   'holdingCost',
   'costNav',
   'sinceAddedChangePercent',
-  'holdingRatio'
+  'holdingRatio',
+  'holdingDays',
+  'period1w',
+  'period6m',
+  'relatedSector',
+  'yesterdayProfit'
 ]);
 
 const MOBILE_COLUMN_HEADERS = {
@@ -540,6 +544,7 @@ export default function MobileFundTable({
   // 从 Zustand 读取删除确认弹框状态，避免 page.jsx 订阅导致全量重渲染
   const fundDeleteConfirm = useModalStore((s) => s.fundDeleteConfirm);
   const fundDeleteBulkConfirm = useModalStore((s) => s.fundDeleteBulkConfirm);
+  const customSettingsSnapshot = useStorageStore((s) => s.customSettings);
   const blockDrawerClose = !!fundDeleteConfirm || !!fundDeleteBulkConfirm;
 
   const [isEditMode, setIsEditMode] = useState(false);
@@ -756,10 +761,19 @@ export default function MobileFundTable({
         Array.isArray(group.mobileTableColumnOrder) && group.mobileTableColumnOrder.length > 0
           ? group.mobileTableColumnOrder
           : null;
-      const visibility =
+      let visibility =
         group.mobileTableColumnVisibility && typeof group.mobileTableColumnVisibility === 'object'
           ? group.mobileTableColumnVisibility
           : null;
+      // 如果移动端没有列可见性配置，但PC端有，从PC端同步共有列的设置
+      if (!visibility && group.pcTableColumnVisibility && typeof group.pcTableColumnVisibility === 'object') {
+        visibility = {};
+        MOBILE_NON_FROZEN_COLUMN_IDS.forEach((id) => {
+          if (id in group.pcTableColumnVisibility) {
+            visibility[id] = group.pcTableColumnVisibility[id];
+          }
+        });
+      }
       byGroup[k] = {
         mobileTableColumnOrder: order
           ? (() => {
@@ -777,13 +791,20 @@ export default function MobileFundTable({
 
   const [configByGroup, setConfigByGroup] = useState(getInitialMobileConfigByGroup);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setConfigByGroup(getInitialMobileConfigByGroup());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customSettingsSnapshot]);
+
   const currentGroupMobile = configByGroup[groupKey];
   const showFullFundName = currentGroupMobile?.mobileShowFullFundName ?? false;
   const defaultOrder = [...MOBILE_NON_FROZEN_COLUMN_IDS];
   const defaultVisibility = (() => {
     const o = {};
     MOBILE_NON_FROZEN_COLUMN_IDS.forEach((id) => {
-      o[id] = true;
+      // 移动端默认隐藏部分不常用列，减少横向滚动
+      o[id] = !MOBILE_COLUMNS_DEFAULT_HIDDEN_IF_PERSONALIZED.has(id);
     });
     return o;
   })();
@@ -813,15 +834,34 @@ export default function MobileFundTable({
     if (typeof window === 'undefined') return;
     try {
       const parsed = storageStore.getItem('customSettings') || {};
-      const group = parsed[groupKey] && typeof parsed[groupKey] === 'object' ? { ...parsed[groupKey] } : {};
+      const customSettings = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+      const group =
+        customSettings[groupKey] && typeof customSettings[groupKey] === 'object' ? { ...customSettings[groupKey] } : {};
       if (updates.mobileTableColumnOrder !== undefined) group.mobileTableColumnOrder = updates.mobileTableColumnOrder;
-      if (updates.mobileTableColumnVisibility !== undefined)
+      if (updates.mobileTableColumnVisibility !== undefined) {
         group.mobileTableColumnVisibility = updates.mobileTableColumnVisibility;
-      parsed[groupKey] = group;
-      storageStore.setItem('customSettings', JSON.stringify(parsed));
+        // 同步更新PC端共有列的可见性配置
+        const pcVis =
+          group.pcTableColumnVisibility && typeof group.pcTableColumnVisibility === 'object'
+            ? { ...group.pcTableColumnVisibility }
+            : {};
+        Object.keys(updates.mobileTableColumnVisibility).forEach((id) => {
+          if (MOBILE_NON_FROZEN_COLUMN_IDS.includes(id)) {
+            pcVis[id] = updates.mobileTableColumnVisibility[id];
+          }
+        });
+        group.pcTableColumnVisibility = pcVis;
+      }
+      customSettings[groupKey] = group;
+      // 使用 useStorageStore 的 setCustomSettings 确保 Zustand 状态与 localStorage 一致
+      useStorageStore.getState().setCustomSettings(customSettings);
+      // 显式调用 storageStore.setItem 触发同步回调
+      storageStore.setItem('customSettings', JSON.stringify(customSettings));
       setConfigByGroup((prev) => ({ ...prev, [groupKey]: { ...prev[groupKey], ...updates } }));
       onCustomSettingsChange?.();
-    } catch {}
+    } catch (e) {
+      console.error('persistMobileGroupConfig error:', e);
+    }
   };
 
   const setMobileColumnOrder = (nextOrderOrUpdater) => {
@@ -837,16 +877,21 @@ export default function MobileFundTable({
     if (typeof window === 'undefined') return;
     try {
       const parsed = storageStore.getItem('customSettings') || {};
-      const group = parsed[groupKey] && typeof parsed[groupKey] === 'object' ? { ...parsed[groupKey] } : {};
+      const customSettings = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+      const group =
+        customSettings[groupKey] && typeof customSettings[groupKey] === 'object' ? { ...customSettings[groupKey] } : {};
       group.mobileShowFullFundName = show;
-      parsed[groupKey] = group;
-      storageStore.setItem('customSettings', JSON.stringify(parsed));
+      customSettings[groupKey] = group;
+      useStorageStore.getState().setCustomSettings(customSettings);
+      storageStore.setItem('customSettings', JSON.stringify(customSettings));
       setConfigByGroup((prev) => ({
         ...prev,
         [groupKey]: { ...prev[groupKey], mobileShowFullFundName: show }
       }));
       onCustomSettingsChange?.();
-    } catch {}
+    } catch (e) {
+      console.error('persistShowFullFundName error:', e);
+    }
   };
 
   const handleToggleShowFullFundName = (show) => {
@@ -1047,11 +1092,11 @@ export default function MobileFundTable({
     };
   }, [showPortalHeader]);
 
-  const NAME_CELL_WIDTH = 140;
+  const NAME_CELL_WIDTH = 160;
   const GAP = 12;
   const LAST_COLUMN_EXTRA = 12;
   const FALLBACK_WIDTHS = {
-    fundName: 140,
+    fundName: 160,
     [EDIT_MOVE_TO_FRONT_COL]: 72,
     [EDIT_DRAG_COL]: 72,
     tags: 120,
@@ -1357,11 +1402,11 @@ export default function MobileFundTable({
     setMobileColumnOrder([...MOBILE_NON_FROZEN_COLUMN_IDS]);
   };
   const handleResetMobileColumnVisibility = () => {
-    const allVisible = {};
+    const defaultVis = {};
     MOBILE_NON_FROZEN_COLUMN_IDS.forEach((id) => {
-      allVisible[id] = true;
+      defaultVis[id] = !MOBILE_COLUMNS_DEFAULT_HIDDEN_IF_PERSONALIZED.has(id);
     });
-    setMobileColumnVisibility(allVisible);
+    setMobileColumnVisibility(defaultVis);
   };
   const handleToggleMobileColumnVisibility = (columnId, visible) => {
     setMobileColumnVisibility((prev = {}) => ({ ...prev, [columnId]: visible }));

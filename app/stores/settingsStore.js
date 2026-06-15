@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useStorageStore } from './storageStore';
 
 /**
  * 本地配置状态 Zustand Store
@@ -37,10 +38,15 @@ export const useSettingsStore = create((set) => ({
     set({ dynamicStylePc: typeof val === 'function' ? val(useSettingsStore.getState().dynamicStylePc) : val }),
   setDynamicStyleMobile: (val) =>
     set({ dynamicStyleMobile: typeof val === 'function' ? val(useSettingsStore.getState().dynamicStyleMobile) : val }),
-  setIsGroupSummarySticky: (val) =>
-    set({
-      isGroupSummarySticky: typeof val === 'function' ? val(useSettingsStore.getState().isGroupSummarySticky) : val
-    }),
+  setIsGroupSummarySticky: (val) => {
+    const nextVal = typeof val === 'function' ? val(useSettingsStore.getState().isGroupSummarySticky) : val;
+    set({ isGroupSummarySticky: nextVal });
+    // 同步到 customSettings 以实现多端云同步
+    try {
+      const { setCustomSettings, customSettings } = useStorageStore.getState();
+      setCustomSettings({ ...(customSettings || {}), isGroupSummarySticky: nextVal });
+    } catch {}
+  },
 
   /**
    * 从 customSettings 解析并同步配置到 Zustand 状态
@@ -71,6 +77,24 @@ export const useSettingsStore = create((set) => ({
       if (typeof customSettings.dynamicStylePc === 'boolean') patch.dynamicStylePc = customSettings.dynamicStylePc;
       if (typeof customSettings.dynamicStyleMobile === 'boolean')
         patch.dynamicStyleMobile = customSettings.dynamicStyleMobile;
+      if (typeof customSettings.isGroupSummarySticky === 'boolean')
+        patch.isGroupSummarySticky = customSettings.isGroupSummarySticky;
+      if (
+        typeof customSettings.theme === 'string' &&
+        (customSettings.theme === 'dark' || customSettings.theme === 'light')
+      ) {
+        patch.theme = customSettings.theme;
+        // 直接应用到 DOM 和 localStorage，确保多端同步后主题立即生效
+        try {
+          document.documentElement.setAttribute('data-theme', customSettings.theme);
+          localStorage.setItem('theme', customSettings.theme);
+        } catch {}
+      }
+      if (
+        typeof customSettings.viewMode === 'string' &&
+        (customSettings.viewMode === 'card' || customSettings.viewMode === 'list')
+      )
+        patch.viewMode = customSettings.viewMode;
 
       if (Object.keys(patch).length > 0) {
         set(patch);

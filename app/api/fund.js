@@ -374,6 +374,51 @@ export const fetchEastmoneySectorQuotesBatch = async (secids, { cacheTime = SECT
   return results;
 };
 
+/**
+ * 获取东方财富热门板块列表（行业+概念）
+ * @returns {Promise<Array<{id: string, sector_id: string, sector_name: string, sector_type: string, change_pct: number, net_inflow: number}>>}
+ */
+export const fetchHotSectorsFromEastmoney = async () => {
+  if (typeof fetch === 'undefined') return [];
+
+  const fetchList = async (type) => {
+    const fs = type === 'industry' ? 'm:90+t:2+f:!50' : 'm:90+t:3+f:!50';
+    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=50&po=1&np=1&fltt=2&invt=2&fid=f3&fs=${fs}&fields=f12,f13,f14,f3,f62&_=${Date.now()}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const json = await res.json();
+      const diff = json?.data?.diff;
+      if (!Array.isArray(diff)) return [];
+      return diff
+        .map((item) => {
+          const code = item.f12 != null ? String(item.f12) : '';
+          const market = item.f13 != null ? String(item.f13) : '';
+          const name = item.f14 != null ? String(item.f14) : '';
+          const f3 = item.f3;
+          const f62 = item.f62;
+          const pct = f3 != null && Number.isFinite(Number(f3)) ? Number(f3) : 0;
+          const inflow = f62 != null && Number.isFinite(Number(f62)) ? Number(f62) : 0;
+          return {
+            id: `${market}_${code}`,
+            sector_id: code,
+            sector_name: name,
+            sector_type: type,
+            change_pct: pct,
+            net_inflow: inflow
+          };
+        })
+        .filter((s) => s.sector_id && s.sector_name);
+    } catch (e) {
+      console.error(`Fetch ${type} sectors error:`, e);
+      return [];
+    }
+  };
+
+  const [industry, concept] = await Promise.all([fetchList('industry'), fetchList('concept')]);
+  return [...industry, ...concept];
+};
+
 function normalizeEastmoneyScriptUrl(url) {
   let key = url;
   try {

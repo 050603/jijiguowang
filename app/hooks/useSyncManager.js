@@ -1137,7 +1137,17 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         if (isPlainObject(cloudData.customSettings)) {
           try {
             const currentCustomSettings = useStorageStore.getState().customSettings;
-            const merged = { ...(currentCustomSettings || {}), ...cloudData.customSettings };
+            // 深度合并 customSettings，保留各分组的独立配置
+            const merged = { ...(currentCustomSettings || {}) };
+            Object.keys(cloudData.customSettings).forEach((key) => {
+              if (key === 'all') {
+                merged.all = { ...(merged.all || {}), ...cloudData.customSettings.all };
+              } else if (isPlainObject(cloudData.customSettings[key])) {
+                merged[key] = { ...(merged[key] || {}), ...cloudData.customSettings[key] };
+              } else {
+                merged[key] = cloudData.customSettings[key];
+              }
+            });
             useStorageStore.getState().setCustomSettings(merged);
             if (
               typeof merged.localSortDisplayMode === 'string' &&

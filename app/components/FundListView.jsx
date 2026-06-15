@@ -177,7 +177,7 @@ export default function FundListView({
                 <motion.div
                   layout="position"
                   key={f.code}
-                  className="col-6"
+                  className={isMobile ? 'col-12' : 'col-6'}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}

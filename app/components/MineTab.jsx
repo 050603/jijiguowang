@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 import { LoginIcon } from './Icons';
 
 export default function MineTab({
@@ -14,7 +14,8 @@ export default function MineTab({
   onTutorial,
   onUpdateLog,
   onFeedback,
-  onSponsorSupport
+  onSponsorSupport,
+  onAIAnalysis
 }) {
   return (
     <div className="mine-tab" style={{ display: visible ? undefined : 'none' }} aria-hidden={!visible || undefined}>
@@ -68,6 +69,20 @@ export default function MineTab({
       </section>
 
       <ul className="mine-menu-list" role="list">
+        <li>
+          <button
+            type="button"
+            className="mine-menu-row glass"
+            onClick={onAIAnalysis}
+            style={{ color: 'var(--primary)' }}
+          >
+            <span className="mine-menu-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Sparkles width="16" height="16" />
+              AI 智能分析
+            </span>
+            <ChevronRight className="mine-menu-chevron" aria-hidden strokeWidth={2} />
+          </button>
+        </li>
         <li>
           <button type="button" className="mine-menu-row glass" onClick={onMyEarnings}>
             <span className="mine-menu-label">我的收益</span>

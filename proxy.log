@@ -1,0 +1,5 @@
+nohup: ignoring input
+AI proxy server listening on port 3001
+Forwarding /jijin/api/chat -> https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+[2026-06-10T15:29:59.717Z] Proxy request: POST /jijin/api/chat, body length: 84
+[2026-06-10T15:30:04.025Z] Dashscope response: 200

@@ -334,7 +334,12 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
     });
   };
 
-  const confirmScanImport = async (targetGroupId = 'all', expandAfterAdd = true) => {
+  const confirmScanImport = async (
+    targetGroupId = 'all',
+    expandAfterAdd = true,
+    addMode = 'watchlist',
+    holdingsData = null
+  ) => {
     const parseAmount = (val) => {
       if (!val && val !== 0) return null;
       const num = parseFloat(String(val).replace(/,/g, ''));
@@ -361,7 +366,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
 
     if (codes.length === 0) {
       showToast('所选基金已在目标分组中', 'info');
-      return;
+      return [];
     }
     setScanConfirmModalOpen(false);
     setIsScanImporting(true);
@@ -370,6 +375,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
     try {
       const newFunds = [];
       const newHoldings = {};
+      const importedFundMap = {}; // 记录每个code对应的基金数据，用于返回
       let successCount = 0;
       let failedCount = 0;
 
@@ -380,22 +386,31 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
         const existed = funds.some((existing) => existing.code === code);
         try {
           const data = existed ? funds.find((f) => f.code === code) || null : await fetchFundData(code);
+          if (data) importedFundMap[code] = data;
           if (!existed && data) newFunds.push(data);
 
-          const scannedFund = scannedFunds.find((f) => f.code === code);
-          const holdAmounts = parseAmount(scannedFund?.holdAmounts);
-          const holdGains = parseAmount(scannedFund?.holdGains);
-          const dwjz = data?.dwjz || data?.gsz || 0;
-
-          if (holdAmounts !== null && dwjz > 0) {
-            const share = holdAmounts / dwjz;
-            const profit = holdGains !== null ? holdGains : 0;
-            const principal = holdAmounts - profit;
-            const cost = share > 0 ? principal / share : 0;
+          if (holdingsData && holdingsData[code]) {
+            const extHolding = holdingsData[code];
             newHoldings[code] = {
-              share: Number(share.toFixed(2)),
-              cost: Number(cost.toFixed(4))
+              share: Number(extHolding.share),
+              cost: Number(extHolding.cost)
             };
+          } else {
+            const scannedFund = scannedFunds.find((f) => f.code === code);
+            const holdAmounts = parseAmount(scannedFund?.holdAmounts);
+            const holdGains = parseAmount(scannedFund?.holdGains);
+            const dwjz = data?.dwjz || data?.gsz || 0;
+
+            if (holdAmounts !== null && dwjz > 0) {
+              const share = holdAmounts / dwjz;
+              const profit = holdGains !== null ? holdGains : 0;
+              const principal = holdAmounts - profit;
+              const cost = share > 0 ? principal / share : 0;
+              newHoldings[code] = {
+                share: Number(share.toFixed(2)),
+                cost: Number(cost.toFixed(4))
+              };
+            }
           }
 
           successCount++;
@@ -476,8 +491,16 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
       } else {
         showToast('未能导入任何基金', 'info');
       }
+
+      // 返回成功导入的基金列表，用于持仓模式自动打开持仓设置
+      return codes
+        .map((code) => {
+          return importedFundMap[code] || funds.find((f) => f.code === code) || { code };
+        })
+        .filter(Boolean);
     } catch (e) {
       showToast('导入失败', 'error');
+      return [];
     } finally {
       setIsScanImporting(false);
       setScanImportProgress({ current: 0, total: 0, success: 0, failed: 0 });

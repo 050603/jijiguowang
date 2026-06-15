@@ -1,5 +1,5 @@
 import { useState, useCallback, useLayoutEffect, useEffect } from 'react';
-import { storageStore } from '../stores';
+import { useStorageStore } from '../stores';
 
 /**
  * 管理应用主题（dark/light）
@@ -11,6 +11,7 @@ export function useTheme() {
   // 初始固定为 dark，避免 SSR 与客户端首屏不一致导致 hydration 报错
   const [theme, setTheme] = useState('dark');
   const [showThemeTransition, setShowThemeTransition] = useState(false);
+  const { setCustomSettings } = useStorageStore();
 
   const handleThemeToggle = useCallback(() => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -25,7 +26,7 @@ export function useTheme() {
         setTheme(fromDom);
         return;
       }
-      const fromStorage = storageStore.getItem('theme');
+      const fromStorage = localStorage.getItem('theme');
       if (fromStorage === 'light' || fromStorage === 'dark') {
         setTheme(fromStorage);
         document.documentElement.setAttribute('data-theme', fromStorage);
@@ -37,9 +38,11 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     try {
-      storageStore.setItem('theme', theme);
+      localStorage.setItem('theme', theme);
+      // 同步到 customSettings 以实现多端云同步
+      setCustomSettings((prev) => ({ ...prev, theme }));
     } catch {}
-  }, [theme]);
+  }, [theme, setCustomSettings]);
 
   return { theme, showThemeTransition, setShowThemeTransition, handleThemeToggle };
 }

@@ -23,12 +23,10 @@ export default function ScanImportConfirmModal({
 }) {
   const [selectedGroupId, setSelectedGroupId] = useState(currentGroup);
   const [expandAfterAdd, setExpandAfterAdd] = useState(true);
+  const [addMode, setAddMode] = useState('watchlist'); // 'watchlist' | 'holding'
+
   const allCodeSet = useMemo(() => new Set((existingAllCodes || []).filter(Boolean)), [existingAllCodes]);
   const favCodeSet = useMemo(() => new Set((existingFavCodes || []).filter(Boolean)), [existingFavCodes]);
-
-  const handleConfirm = () => {
-    onConfirm(selectedGroupId, expandAfterAdd);
-  };
 
   const formatAmount = (val) => {
     if (!val) return null;
@@ -36,6 +34,14 @@ export default function ScanImportConfirmModal({
     if (isNaN(num)) return null;
     return num;
   };
+
+  const handleConfirm = () => {
+    onConfirm(selectedGroupId, expandAfterAdd, addMode);
+  };
+
+  const selectedFundsList = useMemo(() => {
+    return (scannedFunds || []).filter((item) => selectedScannedCodes.has(item.code));
+  }, [scannedFunds, selectedScannedCodes]);
 
   return (
     <motion.div
@@ -54,11 +60,18 @@ export default function ScanImportConfirmModal({
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="glass card modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 480, maxWidth: '90vw' }}
+        style={{ width: 520, maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
       >
+        {/* Header */}
         <div
           className="title"
-          style={{ marginBottom: 12, justifyContent: 'space-between', display: 'flex', alignItems: 'center' }}
+          style={{
+            marginBottom: 12,
+            justifyContent: 'space-between',
+            display: 'flex',
+            alignItems: 'center',
+            flexShrink: 0
+          }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span>确认导入基金</span>
@@ -86,20 +99,73 @@ export default function ScanImportConfirmModal({
             <CloseIcon width="20" height="20" />
           </button>
         </div>
+
         {isOcrScan && (
-          <div className="ocr-warning" style={{ marginBottom: 12 }}>
+          <div className="ocr-warning" style={{ marginBottom: 12, flexShrink: 0 }}>
             <span>拍照识别方案目前还在优化，请确认识别结果是否正确。</span>
           </div>
         )}
+
         {scannedFunds.length === 0 ? (
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.6, flexShrink: 0 }}>
             未识别到有效的基金代码，请尝试更清晰的截图或手动搜索。
           </div>
         ) : (
           <>
+            {/* Add mode toggle */}
+            <div
+              style={{
+                display: 'flex',
+                background: 'rgba(255,255,255,0.04)',
+                borderRadius: 10,
+                padding: 3,
+                marginBottom: 12,
+                border: '1px solid var(--border)',
+                flexShrink: 0
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setAddMode('watchlist')}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  border: 'none',
+                  borderRadius: 8,
+                  background: addMode === 'watchlist' ? 'var(--primary)' : 'transparent',
+                  color: addMode === 'watchlist' ? '#fff' : 'var(--muted-foreground)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease'
+                }}
+              >
+                添加自选
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('holding')}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  border: 'none',
+                  borderRadius: 8,
+                  background: addMode === 'holding' ? 'var(--primary)' : 'transparent',
+                  color: addMode === 'holding' ? '#fff' : 'var(--muted-foreground)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease'
+                }}
+              >
+                添加持仓
+              </button>
+            </div>
+
+            {/* Scrollable list */}
             <div
               className="search-results pending-list scrollbar-y-styled"
-              style={{ maxHeight: 360, overflowY: 'auto' }}
+              style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
             >
               {scannedFunds.map((item) => {
                 const isSelected = selectedScannedCodes.has(item.code);
@@ -121,6 +187,7 @@ export default function ScanImportConfirmModal({
                 const isAlreadyInTarget = targetGroup === 'all' ? inAll : targetGroup === 'fav' ? inFav : inGroup;
                 const isDisabled = (isAlreadyInTarget && !hasHoldingData) || isInvalid;
                 const displayName = item.name || (isInvalid ? '未找到基金' : '未知基金');
+
                 return (
                   <div
                     key={item.code}
@@ -149,8 +216,9 @@ export default function ScanImportConfirmModal({
                         <div className="checkbox">{isSelected && <div className="checked-mark" />}</div>
                       )}
                     </div>
+
                     {hasHoldingData && !isDisabled && (
-                      <div style={{ display: 'flex', gap: 16, marginTop: 6, paddingLeft: 0, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 16, marginTop: 6, alignItems: 'center' }}>
                         {holdAmounts !== null && (
                           <span className="muted" style={{ fontSize: 12 }}>
                             持有金额：
@@ -190,49 +258,65 @@ export default function ScanImportConfirmModal({
                         )}
                       </div>
                     )}
+
+                    {addMode === 'holding' && isSelected && !isDisabled && (
+                      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--primary)', fontWeight: 500 }}>
+                        导入后将自动打开持仓设置
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-            <div
-              style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
-            >
-              <span className="muted" style={{ fontSize: 13 }}>
-                添加后展开详情
-              </span>
-              <Switch checked={expandAfterAdd} onCheckedChange={(checked) => setExpandAfterAdd(!!checked)} />
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                添加到分组：
-              </span>
-              <Select value={selectedGroupId} onValueChange={(value) => setSelectedGroupId(value)}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="选择分组" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部</SelectItem>
-                  <SelectItem value="fav">自选</SelectItem>
-                  {groups
-                    .filter((g) => g.id !== 'all' && g.id !== 'fav')
-                    .map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+
+            {/* Footer controls */}
+            <div style={{ flexShrink: 0, marginTop: 12 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  marginBottom: 10
+                }}
+              >
+                <span className="muted" style={{ fontSize: 13 }}>
+                  添加后展开详情
+                </span>
+                <Switch checked={expandAfterAdd} onCheckedChange={(checked) => setExpandAfterAdd(!!checked)} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                  添加到分组：
+                </span>
+                <Select value={selectedGroupId} onValueChange={(value) => setSelectedGroupId(value)}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="选择分组" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部</SelectItem>
+                    <SelectItem value="fav">自选</SelectItem>
+                    {groups
+                      .filter((g) => g.id !== 'all' && g.id !== 'fav')
+                      .map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="button secondary" onClick={onClose}>
+                  取消
+                </button>
+                <button className="button" onClick={handleConfirm} disabled={selectedScannedCodes.size === 0}>
+                  确认导入
+                </button>
+              </div>
             </div>
           </>
         )}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          <button className="button secondary" onClick={onClose}>
-            取消
-          </button>
-          <button className="button" onClick={handleConfirm} disabled={selectedScannedCodes.size === 0}>
-            确认导入
-          </button>
-        </div>
       </motion.div>
     </motion.div>
   );

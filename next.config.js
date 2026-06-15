@@ -3,6 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   reactCompiler: true,
   output: 'export',
+  basePath: '/jijin',
   images: {
     unoptimized: true
   }

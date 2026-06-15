@@ -2,23 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { motion, LayoutGroup, useReducedMotion } from 'framer-motion';
-import { Home, TrendingUp, ChevronRight } from 'lucide-react';
+import { Home, TrendingUp, Sparkles, ChevronRight } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const TABS = [
   { id: 'home', label: '首页', Icon: Home },
-  { id: 'market', label: '行情', Icon: TrendingUp }
+  { id: 'market', label: '行情', Icon: TrendingUp },
+  { id: 'ai', label: 'AI分析', Icon: Sparkles }
 ];
 
 export default function PcSideNav({ value, onChange }) {
-  const [mounted, setMounted] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const isMobile = useIsMobile();
   const reduceMotion = useReducedMotion();
 
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted || isMobile) return null;
+  if (isMobile) return null;
 
   const spring = reduceMotion ? { duration: 0.2 } : { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 };
 

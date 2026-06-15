@@ -14,7 +14,7 @@ import {
 } from 'react';
 import { throttle } from 'lodash';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useModalStore } from '../stores';
+import { storageStore, useModalStore, useStorageStore } from '../stores';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
@@ -44,7 +44,6 @@ import {
   fetchFundSecidsBatch,
   fetchEastmoneySectorQuotesBatch
 } from '@/app/api/fund';
-import { storageStore } from '../stores';
 import { asyncPool } from '@/app/lib/asyncHelper';
 import MoveGroupModal from './MoveGroupModal';
 import { Badge } from '@/components/ui/badge';
@@ -521,6 +520,7 @@ export default function PcFundTable({
   // 从 Zustand 读取删除确认弹框状态，避免 page.jsx 订阅导致全量重渲染
   const fundDeleteConfirm = useModalStore((s) => s.fundDeleteConfirm);
   const fundDeleteBulkConfirm = useModalStore((s) => s.fundDeleteBulkConfirm);
+  const customSettingsSnapshot = useStorageStore((s) => s.customSettings);
   const blockDialogClose = !!fundDeleteConfirm || !!fundDeleteBulkConfirm;
 
   const sensors = useSensors(
@@ -748,10 +748,19 @@ export default function PcFundTable({
     }
     const order =
       Array.isArray(group.pcTableColumnOrder) && group.pcTableColumnOrder.length > 0 ? group.pcTableColumnOrder : null;
-    const visibility =
+    let visibility =
       group.pcTableColumnVisibility && typeof group.pcTableColumnVisibility === 'object'
         ? group.pcTableColumnVisibility
         : null;
+    // 如果PC端没有列可见性配置，但移动端有，从移动端同步共有列的设置
+    if (!visibility && group.mobileTableColumnVisibility && typeof group.mobileTableColumnVisibility === 'object') {
+      visibility = {};
+      NON_FROZEN_COLUMN_IDS.forEach((id) => {
+        if (id in group.mobileTableColumnVisibility) {
+          visibility[id] = group.mobileTableColumnVisibility[id];
+        }
+      });
+    }
     const pinned = Array.isArray(group.pcTableColumnPinned) ? group.pcTableColumnPinned : [];
     return { sizing: sizingObj, order, visibility, pinned };
   };
@@ -790,6 +799,12 @@ export default function PcFundTable({
   };
 
   const [configByGroup, setConfigByGroup] = useState(getInitialConfigByGroup);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setConfigByGroup(getInitialConfigByGroup());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customSettingsSnapshot]);
 
   const currentGroupPc = configByGroup[groupKey];
   const showFullFundName = currentGroupPc?.pcShowFullFundName ?? false;
@@ -835,18 +850,37 @@ export default function PcFundTable({
     if (typeof window === 'undefined') return;
     try {
       const parsed = storageStore.getItem('customSettings') || {};
-      const group = parsed[groupKey] && typeof parsed[groupKey] === 'object' ? { ...parsed[groupKey] } : {};
+      const customSettings = parsed && typeof parsed === 'object' ? { ...parsed } : {};
+      const group =
+        customSettings[groupKey] && typeof customSettings[groupKey] === 'object' ? { ...customSettings[groupKey] } : {};
       if (updates.pcTableColumnOrder !== undefined) group.pcTableColumnOrder = updates.pcTableColumnOrder;
-      if (updates.pcTableColumnVisibility !== undefined)
+      if (updates.pcTableColumnVisibility !== undefined) {
         group.pcTableColumnVisibility = updates.pcTableColumnVisibility;
+        // 同步更新移动端共有列的可见性配置
+        const mobileVis =
+          group.mobileTableColumnVisibility && typeof group.mobileTableColumnVisibility === 'object'
+            ? { ...group.mobileTableColumnVisibility }
+            : {};
+        Object.keys(updates.pcTableColumnVisibility).forEach((id) => {
+          if (NON_FROZEN_COLUMN_IDS.includes(id)) {
+            mobileVis[id] = updates.pcTableColumnVisibility[id];
+          }
+        });
+        group.mobileTableColumnVisibility = mobileVis;
+      }
       if (updates.pcTableColumns !== undefined) group.pcTableColumns = updates.pcTableColumns;
       if (updates.pcTableColumnPinned !== undefined) group.pcTableColumnPinned = updates.pcTableColumnPinned;
       if (updates.pcShowFullFundName !== undefined) group.pcShowFullFundName = updates.pcShowFullFundName;
-      parsed[groupKey] = group;
-      storageStore.setItem('customSettings', JSON.stringify(parsed));
+      customSettings[groupKey] = group;
+      // 使用 useStorageStore 的 setCustomSettings 确保 Zustand 状态与 localStorage 一致
+      useStorageStore.getState().setCustomSettings(customSettings);
+      // 显式调用 storageStore.setItem 触发同步回调
+      storageStore.setItem('customSettings', JSON.stringify(customSettings));
       setConfigByGroup((prev) => ({ ...prev, [groupKey]: { ...prev[groupKey], ...updates } }));
       onCustomSettingsChange?.();
-    } catch {}
+    } catch (e) {
+      console.error('persistPcGroupConfig error:', e);
+    }
   };
 
   const handleToggleShowFullFundName = (show) => {
