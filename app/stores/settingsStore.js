@@ -1,3 +1,4 @@
+import { isBoolean, isFunction, isObject, isString } from 'lodash';
 import { create } from 'zustand';
 import { useStorageStore } from './storageStore';
 
@@ -15,31 +16,29 @@ export const useSettingsStore = create((set) => ({
   dynamicStyleMobile: true,
   isGroupSummarySticky: false,
 
-  setTempSeconds: (val) =>
-    set({ tempSeconds: typeof val === 'function' ? val(useSettingsStore.getState().tempSeconds) : val }),
+  setTempSeconds: (val) => set({ tempSeconds: isFunction(val) ? val(useSettingsStore.getState().tempSeconds) : val }),
   setContainerWidth: (val) =>
-    set({ containerWidth: typeof val === 'function' ? val(useSettingsStore.getState().containerWidth) : val }),
+    set({ containerWidth: isFunction(val) ? val(useSettingsStore.getState().containerWidth) : val }),
   setShowMarketIndexPc: (val) =>
-    set({ showMarketIndexPc: typeof val === 'function' ? val(useSettingsStore.getState().showMarketIndexPc) : val }),
+    set({ showMarketIndexPc: isFunction(val) ? val(useSettingsStore.getState().showMarketIndexPc) : val }),
   setShowMarketIndexMobile: (val) =>
     set({
-      showMarketIndexMobile: typeof val === 'function' ? val(useSettingsStore.getState().showMarketIndexMobile) : val
+      showMarketIndexMobile: isFunction(val) ? val(useSettingsStore.getState().showMarketIndexMobile) : val
     }),
   setShowGroupFundSearchPc: (val) =>
     set({
-      showGroupFundSearchPc: typeof val === 'function' ? val(useSettingsStore.getState().showGroupFundSearchPc) : val
+      showGroupFundSearchPc: isFunction(val) ? val(useSettingsStore.getState().showGroupFundSearchPc) : val
     }),
   setShowGroupFundSearchMobile: (val) =>
     set({
-      showGroupFundSearchMobile:
-        typeof val === 'function' ? val(useSettingsStore.getState().showGroupFundSearchMobile) : val
+      showGroupFundSearchMobile: isFunction(val) ? val(useSettingsStore.getState().showGroupFundSearchMobile) : val
     }),
   setDynamicStylePc: (val) =>
-    set({ dynamicStylePc: typeof val === 'function' ? val(useSettingsStore.getState().dynamicStylePc) : val }),
+    set({ dynamicStylePc: isFunction(val) ? val(useSettingsStore.getState().dynamicStylePc) : val }),
   setDynamicStyleMobile: (val) =>
-    set({ dynamicStyleMobile: typeof val === 'function' ? val(useSettingsStore.getState().dynamicStyleMobile) : val }),
+    set({ dynamicStyleMobile: isFunction(val) ? val(useSettingsStore.getState().dynamicStyleMobile) : val }),
   setIsGroupSummarySticky: (val) => {
-    const nextVal = typeof val === 'function' ? val(useSettingsStore.getState().isGroupSummarySticky) : val;
+    const nextVal = isFunction(val) ? val(useSettingsStore.getState().isGroupSummarySticky) : val;
     set({ isGroupSummarySticky: nextVal });
     // 同步到 customSettings 以实现多端云同步
     try {
@@ -52,7 +51,7 @@ export const useSettingsStore = create((set) => ({
    * 从 customSettings 解析并同步配置到 Zustand 状态
    */
   syncFromCustomSettings: (customSettings) => {
-    if (!customSettings || typeof customSettings !== 'object') return;
+    if (!customSettings || !isObject(customSettings)) return;
     try {
       const patch = {};
       const w = customSettings.pcContainerWidth;
@@ -66,23 +65,18 @@ export const useSettingsStore = create((set) => ({
               : 1200;
         patch.containerWidth = Math.min(maxWidth, Math.max(600, num));
       }
-      if (typeof customSettings.showMarketIndexPc === 'boolean')
-        patch.showMarketIndexPc = customSettings.showMarketIndexPc;
-      if (typeof customSettings.showMarketIndexMobile === 'boolean')
+      if (isBoolean(customSettings.showMarketIndexPc)) patch.showMarketIndexPc = customSettings.showMarketIndexPc;
+      if (isBoolean(customSettings.showMarketIndexMobile))
         patch.showMarketIndexMobile = customSettings.showMarketIndexMobile;
-      if (typeof customSettings.showGroupFundSearchPc === 'boolean')
+      if (isBoolean(customSettings.showGroupFundSearchPc))
         patch.showGroupFundSearchPc = customSettings.showGroupFundSearchPc;
-      if (typeof customSettings.showGroupFundSearchMobile === 'boolean')
+      if (isBoolean(customSettings.showGroupFundSearchMobile))
         patch.showGroupFundSearchMobile = customSettings.showGroupFundSearchMobile;
-      if (typeof customSettings.dynamicStylePc === 'boolean') patch.dynamicStylePc = customSettings.dynamicStylePc;
-      if (typeof customSettings.dynamicStyleMobile === 'boolean')
-        patch.dynamicStyleMobile = customSettings.dynamicStyleMobile;
-      if (typeof customSettings.isGroupSummarySticky === 'boolean')
+      if (isBoolean(customSettings.dynamicStylePc)) patch.dynamicStylePc = customSettings.dynamicStylePc;
+      if (isBoolean(customSettings.dynamicStyleMobile)) patch.dynamicStyleMobile = customSettings.dynamicStyleMobile;
+      if (isBoolean(customSettings.isGroupSummarySticky))
         patch.isGroupSummarySticky = customSettings.isGroupSummarySticky;
-      if (
-        typeof customSettings.theme === 'string' &&
-        (customSettings.theme === 'dark' || customSettings.theme === 'light')
-      ) {
+      if (isString(customSettings.theme) && (customSettings.theme === 'dark' || customSettings.theme === 'light')) {
         patch.theme = customSettings.theme;
         // 直接应用到 DOM 和 localStorage，确保多端同步后主题立即生效
         try {
@@ -91,7 +85,7 @@ export const useSettingsStore = create((set) => ({
         } catch {}
       }
       if (
-        typeof customSettings.viewMode === 'string' &&
+        isString(customSettings.viewMode) &&
         (customSettings.viewMode === 'card' || customSettings.viewMode === 'list')
       )
         patch.viewMode = customSettings.viewMode;

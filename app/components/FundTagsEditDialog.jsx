@@ -1,16 +1,19 @@
 'use client';
+import { isArray, isObject } from 'lodash';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Tag, X } from 'lucide-react';
+import { Plus, Tag, X, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import ConfirmModal from './ConfirmModal';
-import { CloseIcon } from './Icons';
+import { CloseIcon, RefreshIcon } from './Icons';
 import { cn } from '@/lib/utils';
 import AddTagDialog from './AddTagDialog';
+import EditTagDialog from './EditTagDialog';
+import SyncFundTagsModal from './SyncFundTagsModal';
 import { TAG_THEME_OPTIONS } from '@/app/constants';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
@@ -18,11 +21,11 @@ const DEFAULT_TAG_THEME = 'default';
 const ALLOWED_THEMES = new Set(TAG_THEME_OPTIONS.map((x) => x.key));
 
 function normalizeTagDraft(raw) {
-  if (!Array.isArray(raw)) return [];
+  if (!isArray(raw)) return [];
   const out = [];
   const usedIds = new Set();
   for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || !isObject(item)) continue;
     const name = String(item.name ?? '').trim();
     if (!name || name.length > 24) continue;
     let id = String(item.id ?? '').trim();
@@ -54,17 +57,57 @@ export default function FundTagsEditDialog({
   recommendedTagItems = [],
   onAddPoolTag,
   onDeleteGlobalTag,
-  getTagUsageLabels
+  onUpdateGlobalTag,
+  getTagUsageLabels,
+  allFunds = [],
+  fundTagListsByCode = {}
 }) {
   const isMobile = useIsMobile();
   const [draft, setDraft] = useState(() => normalizeTagDraft(tags));
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editTagData, setEditTagData] = useState(null);
   /** 'fund'：加到当前基金已选；'pool'：仅写入全局可选池 */
   const [addDialogPurpose, setAddDialogPurpose] = useState('fund');
   const [optionalEditMode, setOptionalEditMode] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   /** 防止快速连点可选标签，连续两次 setDraft 都基于旧 draft 导致重复添加 */
   const optionalPickLockRef = useRef(false);
+
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
+  const syncOptions = useMemo(() => {
+    if (!allFunds || allFunds.length === 0) return [];
+    return allFunds
+      .filter((f) => f.code && f.code !== fundCode)
+      .map((f) => {
+        const fc = String(f.code).trim();
+        const fTags = isArray(fundTagListsByCode[fc])
+          ? fundTagListsByCode[fc].map(({ name, theme }) => ({
+              id: uuidv4(),
+              name: String(name ?? '').trim(),
+              theme: String(theme ?? '').trim()
+            }))
+          : [];
+        return {
+          id: fc,
+          name: f.name,
+          tags: fTags
+        };
+      });
+  }, [allFunds, fundCode, fundTagListsByCode]);
+
+  const handleSyncConfirm = useCallback(
+    (targetCodes) => {
+      if (!targetCodes || targetCodes.length === 0) return;
+      targetCodes.forEach((fc) => {
+        onSave?.(fc, draft);
+      });
+      setSyncModalOpen(false);
+      // Optional: show toast. But we don't have showToast passed here.
+      // It's okay, it syncs immediately.
+    },
+    [draft, onSave]
+  );
 
   const themeClassByKey = useMemo(() => {
     const map = new Map();
@@ -90,7 +133,7 @@ export default function FundTagsEditDialog({
   const addTagsToFund = useCallback(
     (rawNames, theme = DEFAULT_TAG_THEME, preferredId) => {
       const normalizedTheme = ALLOWED_THEMES.has(theme) ? theme : DEFAULT_TAG_THEME;
-      const single = Array.isArray(rawNames) && rawNames.length === 1;
+      const single = isArray(rawNames) && rawNames.length === 1;
       const poolId = single && String(preferredId ?? '').trim() ? String(preferredId).trim() : '';
       /** id 必须在 setState updater 外生成：Strict Mode 会重复执行 updater，内部 uuid 会产生两个 id、两次 persist，全局 tags 出现两条 */
       const rowsToAdd = [];
@@ -132,6 +175,7 @@ export default function FundTagsEditDialog({
     setDraft(normalizeTagDraft(tags));
     setOptionalEditMode(false);
     setDeleteConfirm(null);
+    setEditTagData(null);
     setAddDialogPurpose('fund');
     optionalPickLockRef.current = false;
     // 仅在打开或切换基金时从 props 同步；不把 tags 列入依赖，避免父级刷新覆盖未提交的编辑
@@ -169,7 +213,7 @@ export default function FundTagsEditDialog({
     (payload) => {
       const theme = payload?.theme ?? DEFAULT_TAG_THEME;
       const names =
-        Array.isArray(payload?.names) && payload.names.length
+        isArray(payload?.names) && payload.names.length
           ? payload.names
           : payload?.name != null
             ? [String(payload.name).trim()].filter(Boolean)
@@ -221,6 +265,29 @@ export default function FundTagsEditDialog({
     removeDraftTagByPoolId(deleteConfirm.tagId);
     setDeleteConfirm(null);
   }, [deleteConfirm, onDeleteGlobalTag, removeDraftTagByPoolId]);
+
+  const deleteConfirmModal = deleteConfirm ? (
+    <ConfirmModal
+      title="删除标签"
+      confirmText="确定删除"
+      confirmVariant="danger"
+      onCancel={() => setDeleteConfirm(null)}
+      onConfirm={confirmDeleteOptionalTag}
+      messageContent={
+        <div className="flex flex-col gap-3">
+          <p>
+            标签「<span className="font-medium text-foreground">{deleteConfirm.name}</span>
+            」已用于以下基金，删除后这些基金将不再显示该标签。确定删除？
+          </p>
+          <ul className="list-inside list-disc space-y-1 text-sm">
+            {deleteConfirm.labels.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      }
+    />
+  ) : null;
 
   const body = (
     <div className="flex min-w-0 flex-col gap-4">
@@ -309,27 +376,46 @@ export default function FundTagsEditDialog({
 
             if (optionalEditMode) {
               return (
-                <Tooltip key={poolTagId || `opt-${itemIndex}`}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex"
-                      aria-label={`删除标签 ${label}`}
-                      onClick={() => requestDeleteOptionalTag(poolTagId, label)}
-                    >
-                      <Badge
-                        className={cn('cursor-pointer font-normal text-[13px]', themeClass)}
-                        variant={isDefault ? 'outline' : 'default'}
-                      >
-                        {label}
-                        <X data-icon="inline-end" className="h-3 w-3 shrink-0" />
-                      </Badge>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="z-[9999]">
-                    <p>删除标签</p>
-                  </TooltipContent>
-                </Tooltip>
+                <div key={poolTagId || `opt-${itemIndex}`} className="inline-flex">
+                  <Badge
+                    className={cn('font-normal text-[13px] gap-1 px-2.5', themeClass)}
+                    variant={isDefault ? 'outline' : 'default'}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`编辑标签 ${label}`}
+                          className="hover:opacity-75 cursor-pointer flex items-center justify-center -ml-0.5"
+                          onClick={() => setEditTagData({ id: poolTagId, name: label, theme: itemTheme })}
+                        >
+                          <Pencil className="h-3 w-3 shrink-0" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="z-[9999]">
+                        <p>编辑标签</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <span>{label}</span>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`删除标签 ${label}`}
+                          className="hover:opacity-75 cursor-pointer flex items-center justify-center -mr-0.5"
+                          onClick={() => requestDeleteOptionalTag(poolTagId, label)}
+                        >
+                          <X className="h-3 w-3 shrink-0" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="z-[9999]">
+                        <p>删除标签</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </Badge>
+                </div>
               );
             }
 
@@ -374,31 +460,33 @@ export default function FundTagsEditDialog({
       </div>
 
       <AddTagDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} onAdd={handleAddDialogAdd} />
+      <EditTagDialog
+        open={!!editTagData}
+        onOpenChange={(v) => {
+          if (!v) setEditTagData(null);
+        }}
+        initialName={editTagData?.name || ''}
+        initialTheme={editTagData?.theme || 'default'}
+        onEdit={(payload) => {
+          if (editTagData?.id) {
+            onUpdateGlobalTag?.(editTagData.id, payload);
+            setDraft((prev) =>
+              prev.map((t) => (t.id === editTagData.id ? { ...t, name: payload.name, theme: payload.theme } : t))
+            );
+          }
+        }}
+      />
+      <SyncFundTagsModal
+        open={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        options={syncOptions}
+        sourceName={fundName || fundCode || '当前基金'}
+        sourceTags={draft}
+        onConfirm={handleSyncConfirm}
+      />
+      {deleteConfirmModal}
     </div>
   );
-
-  const deleteConfirmModal = deleteConfirm ? (
-    <ConfirmModal
-      title="删除标签"
-      confirmText="确定删除"
-      confirmVariant="danger"
-      onCancel={() => setDeleteConfirm(null)}
-      onConfirm={confirmDeleteOptionalTag}
-      messageContent={
-        <div className="flex flex-col gap-3">
-          <p>
-            标签「<span className="font-medium text-foreground">{deleteConfirm.name}</span>
-            」已用于以下基金，删除后这些基金将不再显示该标签。确定删除？
-          </p>
-          <ul className="list-inside list-disc space-y-1 text-sm">
-            {deleteConfirm.labels.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </div>
-      }
-    />
-  ) : null;
 
   if (isMobile) {
     return (
@@ -406,7 +494,33 @@ export default function FundTagsEditDialog({
         <Drawer open={open} onOpenChange={onOpenChange} direction="bottom">
           <DrawerContent className="glass max-h-[90vh]" defaultHeight="77vh" minHeight="36vh" maxHeight="90vh">
             <DrawerHeader className="flex flex-row items-center justify-between gap-2 border-b border-[var(--border)] py-4 text-left">
-              <DrawerTitle className="text-base font-semibold">编辑标签</DrawerTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <DrawerTitle className="text-base font-semibold">编辑标签</DrawerTitle>
+                {allFunds.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setSyncModalOpen(true)}
+                    className="button secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      height: 28,
+                      padding: '0 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--primary)',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
+                      border: 'none'
+                    }}
+                  >
+                    <RefreshIcon width="14" height="14" />
+                    同步
+                  </button>
+                )}
+              </div>
               <DrawerClose
                 className="icon-button border-none bg-transparent p-1"
                 title="关闭"
@@ -418,7 +532,6 @@ export default function FundTagsEditDialog({
             <div className="scrollbar-y-styled flex-1 overflow-y-auto px-4 pb-6 pt-2">{body}</div>
           </DrawerContent>
         </Drawer>
-        {deleteConfirmModal}
       </>
     );
   }
@@ -441,6 +554,30 @@ export default function FundTagsEditDialog({
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Tag width={20} height={20} aria-hidden className="shrink-0 text-[var(--foreground)]" />
                 <span className="text-[var(--foreground)]">编辑标签</span>
+                {allFunds.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setSyncModalOpen(true)}
+                    className="button secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      height: 28,
+                      padding: '0 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--primary)',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
+                      border: 'none'
+                    }}
+                  >
+                    <RefreshIcon width="14" height="14" />
+                    同步
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -457,7 +594,6 @@ export default function FundTagsEditDialog({
           </div>
         </DialogContent>
       </Dialog>
-      {deleteConfirmModal}
     </>
   );
 }

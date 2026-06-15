@@ -1,10 +1,12 @@
 'use client';
+import { isBoolean, isNumber, isObject } from 'lodash';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { PinIcon, PinOffIcon, EyeIcon, EyeOffIcon, SwitchIcon } from './Icons';
 import FitText from './FitText';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { formatMoney } from '@/lib/utils';
 
 import { SUMMARY_TAB_ID } from '@/app/constants';
 
@@ -68,8 +70,8 @@ function CountUp({
     };
   }, [value]);
 
-  const text = `${prefix}${Math.abs(displayValue).toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${suffix}`;
-  const styleFontSize = typeof style.fontSize === 'number' ? style.fontSize : parseFloat(style.fontSize);
+  const text = `${prefix}${formatMoney(Math.abs(displayValue), decimals)}${suffix}`;
+  const styleFontSize = isNumber(style.fontSize) ? style.fontSize : parseFloat(style.fontSize);
   const resolvedMaxFontSize = maxFontSize ?? (Number.isFinite(styleFontSize) ? styleFontSize : undefined);
 
   return (
@@ -105,7 +107,7 @@ export default function GroupSummary({
   const metricSize = isMobile ? 16 : 20;
 
   useEffect(() => {
-    if (typeof masked === 'boolean') {
+    if (isBoolean(masked)) {
       setIsMasked(masked);
     }
   }, [masked]);
@@ -141,7 +143,7 @@ export default function GroupSummary({
         }
         if (profit.profitTotal !== null) {
           totalHoldingReturn += profit.profitTotal;
-          if (holding && typeof holding.cost === 'number' && typeof holding.share === 'number') {
+          if (holding && isNumber(holding.cost) && isNumber(holding.share)) {
             totalCost += holding.cost * holding.share;
           }
         }
@@ -166,7 +168,7 @@ export default function GroupSummary({
   }, [funds, holdings, getProfit]);
 
   const summary =
-    summaryTotalsOverride != null && typeof summaryTotalsOverride === 'object'
+    summaryTotalsOverride != null && isObject(summaryTotalsOverride)
       ? {
           totalAsset: summaryTotalsOverride.totalAsset,
           totalProfitToday: summaryTotalsOverride.totalProfitToday,

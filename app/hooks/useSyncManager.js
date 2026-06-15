@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { isNumber, isString, isPlainObject, isNil, isArray } from 'lodash';
+import { isArray, isFunction, isNil, isNumber, isPlainObject, isString } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
 import {
@@ -26,6 +26,7 @@ import {
   nowInTz,
   toTz
 } from '../lib/fundHelpers';
+import { calculateYtdReturnRate, mergeAllScopedDailyEarnings, mergeAllHoldings } from '../lib/dailyEarnings';
 
 export const normalizeFundDailyEarningsScoped = (source) => {
   if (!isPlainObject(source)) return {};
@@ -128,41 +129,47 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
   // --- getComparablePayload ---
   function getComparablePayload(payload) {
     if (!isPlainObject(payload)) return '';
-    const rawFunds = Array.isArray(payload.funds) ? payload.funds : [];
+    const rawFunds = isArray(payload.funds) ? payload.funds : [];
     const fundCodes = rawFunds.map((fund) => normalizeCode(fund?.code || fund?.CODE)).filter(Boolean);
     const uniqueFundCodes = Array.from(new Set(fundCodes)).sort();
 
-    const favorites = Array.isArray(payload.favorites)
+    const favorites = isArray(payload.favorites)
       ? Array.from(
           new Set(payload.favorites.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
         ).sort()
       : [];
 
-    const collapsedCodes = Array.isArray(payload.collapsedCodes)
+    const collapsedCodes = isArray(payload.collapsedCodes)
       ? Array.from(
           new Set(payload.collapsedCodes.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
         ).sort()
       : [];
 
-    const collapsedTrends = Array.isArray(payload.collapsedTrends)
+    const collapsedTrends = isArray(payload.collapsedTrends)
       ? Array.from(
           new Set(payload.collapsedTrends.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
         ).sort()
       : [];
 
-    const collapsedEarnings = Array.isArray(payload.collapsedEarnings)
+    const collapsedValuationTrends = isArray(payload.collapsedValuationTrends)
+      ? Array.from(
+          new Set(payload.collapsedValuationTrends.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
+        ).sort()
+      : [];
+
+    const collapsedEarnings = isArray(payload.collapsedEarnings)
       ? Array.from(
           new Set(payload.collapsedEarnings.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
         ).sort()
       : [];
 
-    const groups = Array.isArray(payload.groups)
+    const groups = isArray(payload.groups)
       ? payload.groups
           .map((group) => {
             const id = normalizeCode(group?.id);
             if (!id) return null;
             const name = isString(group?.name) ? group.name : '';
-            const codes = Array.isArray(group?.codes)
+            const codes = isArray(group?.codes)
               ? Array.from(
                   new Set(group.codes.map(normalizeCode).filter((code) => uniqueFundCodes.includes(code)))
                 ).sort()
@@ -212,7 +219,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         if (Object.keys(inner).length) groupHoldingsNorm[gid] = inner;
       });
 
-    const pendingTrades = Array.isArray(payload.pendingTrades)
+    const pendingTrades = isArray(payload.pendingTrades)
       ? payload.pendingTrades
           .map((trade) => {
             const fundCode = normalizeCode(trade?.fundCode);
@@ -258,7 +265,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
       .filter((code) => uniqueFundCodes.includes(code))
       .sort()
       .forEach((code) => {
-        const list = Array.isArray(transactionsSource[code]) ? transactionsSource[code] : [];
+        const list = isArray(transactionsSource[code]) ? transactionsSource[code] : [];
         const normalized = list
           .map((t) => {
             const id = t?.id ? String(t.id) : '';
@@ -344,7 +351,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           .filter((code) => uniqueFundCodes.includes(code))
           .sort()
           .map((code) => {
-            const list = Array.isArray(bucket[code]) ? bucket[code] : [];
+            const list = isArray(bucket[code]) ? bucket[code] : [];
             const last = list.length ? list[list.length - 1] : null;
             const date = last?.date ? String(last.date) : '';
             const earnings = Number(last?.earnings);
@@ -352,7 +359,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           });
       });
 
-    const tagRows = Array.isArray(payload.tags) ? payload.tags : [];
+    const tagRows = isArray(payload.tags) ? payload.tags : [];
     const tagsSig = tagRows
       .map((r) => {
         const codes = getFundCodesFromTagRecord(r)
@@ -372,6 +379,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
       groups,
       collapsedCodes,
       collapsedTrends,
+      collapsedValuationTrends,
       refreshMs: Number.isFinite(payload.refreshMs) ? payload.refreshMs : 30000,
       holdings,
       groupHoldings: groupHoldingsNorm,
@@ -405,6 +413,9 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
       if (!keys || keys.has('collapsedTrends')) {
         all.collapsedTrends = storageStore.getItem('collapsedTrends', []);
       }
+      if (!keys || keys.has('collapsedValuationTrends')) {
+        all.collapsedValuationTrends = storageStore.getItem('collapsedValuationTrends', []);
+      }
       if (!keys || keys.has('collapsedEarnings')) {
         all.collapsedEarnings = storageStore.getItem('collapsedEarnings', []);
       }
@@ -437,8 +448,8 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
       }
 
       if (!keys) {
-        all.funds = Array.isArray(all.funds) ? all.funds.map(stripLegacyTagsFromFundObject) : [];
-        const fundCodes = new Set(Array.isArray(all.funds) ? all.funds.map((f) => f?.code).filter(Boolean) : []);
+        all.funds = isArray(all.funds) ? all.funds.map(stripLegacyTagsFromFundObject) : [];
+        const fundCodes = new Set(isArray(all.funds) ? all.funds.map((f) => f?.code).filter(Boolean) : []);
 
         const cleanedHoldings = isPlainObject(all.holdings)
           ? Object.entries(all.holdings).reduce((acc, [code, value]) => {
@@ -461,22 +472,23 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
             }, {})
           : {};
 
-        const cleanedFavorites = Array.isArray(all.favorites)
-          ? all.favorites.filter((code) => fundCodes.has(code))
-          : [];
-        const cleanedCollapsed = Array.isArray(all.collapsedCodes)
+        const cleanedFavorites = isArray(all.favorites) ? all.favorites.filter((code) => fundCodes.has(code)) : [];
+        const cleanedCollapsed = isArray(all.collapsedCodes)
           ? all.collapsedCodes.filter((code) => fundCodes.has(code))
           : [];
-        const cleanedCollapsedTrends = Array.isArray(all.collapsedTrends)
+        const cleanedCollapsedTrends = isArray(all.collapsedTrends)
           ? all.collapsedTrends.filter((code) => fundCodes.has(code))
           : [];
-        const cleanedCollapsedEarnings = Array.isArray(all.collapsedEarnings)
+        const cleanedCollapsedValuationTrends = isArray(all.collapsedValuationTrends)
+          ? all.collapsedValuationTrends.filter((code) => fundCodes.has(code))
+          : [];
+        const cleanedCollapsedEarnings = isArray(all.collapsedEarnings)
           ? all.collapsedEarnings.filter((code) => fundCodes.has(code))
           : [];
-        const cleanedGroups = Array.isArray(all.groups)
+        const cleanedGroups = isArray(all.groups)
           ? all.groups.map((g) => ({
               ...g,
-              codes: Array.isArray(g.codes) ? g.codes.filter((c) => fundCodes.has(c)) : []
+              codes: isArray(g.codes) ? g.codes.filter((c) => fundCodes.has(c)) : []
             }))
           : [];
 
@@ -528,7 +540,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           if (!isPlainObject(bucket)) return acc;
           if (scopeKey !== DAILY_EARNINGS_SCOPE_ALL && !validGroupIdSet.has(scopeKey)) return acc;
           const normalizedBucket = Object.entries(bucket).reduce((bacc, [code, list]) => {
-            if (!fundCodes.has(code) || !Array.isArray(list)) return bacc;
+            if (!fundCodes.has(code) || !isArray(list)) return bacc;
             const normalized = list
               .map((item) => {
                 const date = item?.date ? String(item.date) : '';
@@ -562,7 +574,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           return acc;
         }, {});
 
-        const cleanedTags = Array.isArray(all.tags)
+        const cleanedTags = isArray(all.tags)
           ? all.tags
               .map((r) => {
                 const codes = getFundCodesFromTagRecord(r).filter((c) => fundCodes.has(c));
@@ -579,6 +591,11 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
               .filter(Boolean)
           : [];
 
+        // 合并所有 scope 的收益数据和 holdings 来计算 YTD 收益率
+        const mergedEarningsForYtd = mergeAllScopedDailyEarnings(cleanedFundDailyEarnings);
+        const mergedHoldingsForYtd = mergeAllHoldings(cleanedHoldings, cleanedGroupHoldings);
+        const ytdReturnRate = calculateYtdReturnRate(mergedEarningsForYtd, mergedHoldingsForYtd);
+
         return {
           funds: all.funds,
           tags: cleanedTags,
@@ -586,6 +603,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           groups: cleanedGroups,
           collapsedCodes: cleanedCollapsed,
           collapsedTrends: cleanedCollapsedTrends,
+          collapsedValuationTrends: cleanedCollapsedValuationTrends,
           collapsedEarnings: cleanedCollapsedEarnings,
           refreshMs: all.refreshMs,
           holdings: cleanedHoldings,
@@ -595,8 +613,24 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           dcaPlans: cleanedDcaPlans,
           customSettings: isPlainObject(all.customSettings) ? all.customSettings : {},
           fundDailyEarnings: cleanedFundDailyEarnings,
-          fundValuationTimeseries: isPlainObject(all.fundValuationTimeseries) ? all.fundValuationTimeseries : {}
+          fundValuationTimeseries: isPlainObject(all.fundValuationTimeseries) ? all.fundValuationTimeseries : {},
+          ytdReturnRate
         };
+      } else {
+        // 增量同步时，也一并计算并上报 ytdReturnRate，以免云端 ytd_return_rate 长期为空
+        try {
+          const rawHoldings = storageStore.getItem('holdings', {});
+          const rawGroupHoldings = storageStore.getItem('groupHoldings', {});
+          const rawEarnings = storageStore.getItem('fundDailyEarnings', {});
+          const scopedDaily = normalizeFundDailyEarningsScoped(rawEarnings);
+          // 合并所有 scope 的收益数据和 holdings
+          const mergedEarnings = mergeAllScopedDailyEarnings(scopedDaily);
+          const mergedHoldings = mergeAllHoldings(rawHoldings, rawGroupHoldings);
+          const ytdReturnRate = calculateYtdReturnRate(mergedEarnings, mergedHoldings);
+          all.ytdReturnRate = ytdReturnRate;
+        } catch (e) {
+          console.warn('Failed to calculate ytdReturnRate for partial sync', e);
+        }
       }
 
       return all;
@@ -609,6 +643,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         groups: [],
         collapsedCodes: [],
         collapsedTrends: [],
+        collapsedValuationTrends: [],
         collapsedEarnings: [],
         refreshMs: 30000,
         holdings: {},
@@ -833,6 +868,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
       'groups',
       'collapsedCodes',
       'collapsedTrends',
+      'collapsedValuationTrends',
       'collapsedEarnings',
       'refreshMs',
       'holdings',
@@ -903,7 +939,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
             .map((f) => [String(f.code), f])
         );
 
-        const cloudFunds = Array.isArray(cloudData.funds)
+        const cloudFunds = isArray(cloudData.funds)
           ? dedupeByCode(cloudData.funds.map(stripLegacyTagsFromFundObject))
           : [];
         const nextFunds = cloudFunds.map((cf) =>
@@ -913,7 +949,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         const nextFundCodes = new Set(nextFunds.map((f) => f.code));
 
         if (hasOwn(cloudData, 'tags')) {
-          const cleanedTagRows = (Array.isArray(cloudData.tags) ? cloudData.tags : [])
+          const cleanedTagRows = (isArray(cloudData.tags) ? cloudData.tags : [])
             .map((r) => {
               const codes = getFundCodesFromTagRecord(r).filter((c) => nextFundCodes.has(c));
               const name = String(r?.name ?? '').trim();
@@ -953,7 +989,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         const nextFavorites = cleanCodeArray(cloudData.favorites, nextFundCodes);
         useStorageStore.getState().setFavorites(new Set(nextFavorites));
 
-        const nextGroups = Array.isArray(cloudData.groups)
+        const nextGroups = isArray(cloudData.groups)
           ? cloudData.groups
               .map((g) => ({
                 ...g,
@@ -965,13 +1001,16 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           : [];
         useStorageStore.getState().setGroups(nextGroups);
 
-        const nextCollapsed = Array.isArray(cloudData.collapsedCodes) ? cloudData.collapsedCodes : [];
+        const nextCollapsed = isArray(cloudData.collapsedCodes) ? cloudData.collapsedCodes : [];
         useStorageStore.getState().setCollapsedCodes(new Set(nextCollapsed));
 
-        if (Array.isArray(cloudData.collapsedTrends)) {
+        if (isArray(cloudData.collapsedTrends)) {
           useStorageStore.getState().setCollapsedTrends(new Set(cloudData.collapsedTrends));
         }
-        if (Array.isArray(cloudData.collapsedEarnings)) {
+        if (isArray(cloudData.collapsedValuationTrends)) {
+          useStorageStore.getState().setCollapsedValuationTrends(new Set(cloudData.collapsedValuationTrends));
+        }
+        if (isArray(cloudData.collapsedEarnings)) {
           useStorageStore.getState().setCollapsedEarnings(new Set(cloudData.collapsedEarnings));
         }
 
@@ -993,7 +1032,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         useStorageStore.getState().setGroupHoldings(nextGroupHoldings);
 
         if (hasOwn(cloudData, 'pendingTrades')) {
-          const nextPendingTrades = Array.isArray(cloudData.pendingTrades)
+          const nextPendingTrades = isArray(cloudData.pendingTrades)
             ? cloudData.pendingTrades.filter((trade) => {
                 if (!trade || !nextFundCodes.has(trade.fundCode)) return false;
                 if (trade.groupId && !cloudGroupIds.has(trade.groupId)) return false;
@@ -1004,7 +1043,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
         } else {
           try {
             const localPending = storageStore.getItem('pendingTrades', []);
-            useStorageStore.getState().setPendingTrades(Array.isArray(localPending) ? localPending : []);
+            useStorageStore.getState().setPendingTrades(isArray(localPending) ? localPending : []);
           } catch {}
         }
 
@@ -1045,7 +1084,7 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           if (!isPlainObject(bucket)) return acc;
           if (scopeKey !== DAILY_EARNINGS_SCOPE_ALL && !cloudGroupIds.has(scopeKey)) return acc;
           const normalizedBucket = Object.entries(bucket).reduce((bacc, [code, list]) => {
-            if (!nextFundCodes.has(code) || !Array.isArray(list)) return bacc;
+            if (!nextFundCodes.has(code) || !isArray(list)) return bacc;
             const normalized = list
               .map((item) => {
                 const date = item?.date ? String(item.date) : '';
@@ -1108,8 +1147,8 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
             if (!nextFundCodes.has(code)) return;
             const cloudEntry = nextTimeseries[code];
             const localEntry = mergedTimeseries[code];
-            if (Array.isArray(cloudEntry)) {
-              const localArr = Array.isArray(localEntry) ? localEntry : [];
+            if (isArray(cloudEntry)) {
+              const localArr = isArray(localEntry) ? localEntry : [];
               mergedTimeseries[code] = { 1: mergeSeries(cloudEntry, localArr) };
               return;
             }
@@ -1117,8 +1156,8 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
               const localDsMap = isPlainObject(localEntry) ? localEntry : {};
               const mergedDsMap = { ...localDsMap };
               Object.keys(cloudEntry).forEach((ds) => {
-                if (!Array.isArray(cloudEntry[ds])) return;
-                const localArr = Array.isArray(mergedDsMap[ds]) ? mergedDsMap[ds] : [];
+                if (!isArray(cloudEntry[ds])) return;
+                const localArr = isArray(mergedDsMap[ds]) ? mergedDsMap[ds] : [];
                 mergedDsMap[ds] = mergeSeries(cloudEntry[ds], localArr);
               });
               mergedTimeseries[code] = mergedDsMap;
@@ -1149,21 +1188,15 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
               }
             });
             useStorageStore.getState().setCustomSettings(merged);
-            if (
-              typeof merged.localSortDisplayMode === 'string' &&
-              SORT_DISPLAY_MODES.has(merged.localSortDisplayMode)
-            ) {
+            if (isString(merged.localSortDisplayMode) && SORT_DISPLAY_MODES.has(merged.localSortDisplayMode)) {
               useStorageStore.getState().setPcSortDisplayMode(merged.localSortDisplayMode);
               useStorageStore.getState().setMobileSortDisplayMode(merged.localSortDisplayMode);
             } else {
-              if (
-                typeof merged.pcLocalSortDisplayMode === 'string' &&
-                SORT_DISPLAY_MODES.has(merged.pcLocalSortDisplayMode)
-              ) {
+              if (isString(merged.pcLocalSortDisplayMode) && SORT_DISPLAY_MODES.has(merged.pcLocalSortDisplayMode)) {
                 useStorageStore.getState().setPcSortDisplayMode(merged.pcLocalSortDisplayMode);
               }
               if (
-                typeof merged.mobileLocalSortDisplayMode === 'string' &&
+                isString(merged.mobileLocalSortDisplayMode) &&
                 SORT_DISPLAY_MODES.has(merged.mobileLocalSortDisplayMode)
               ) {
                 useStorageStore.getState().setMobileSortDisplayMode(merged.mobileLocalSortDisplayMode);
@@ -1184,8 +1217,9 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
           const codes = Array.from(new Set(nextFunds.map((f) => f.code)));
           const localCodesSet = new Set(localFundsForMerge.map((f) => f?.code).filter(Boolean));
           const hasNewFunds = codes.some((code) => !localCodesSet.has(code));
+          const shouldRefreshAfterApply = options.refreshAfterApply || hasNewFunds;
 
-          if (hasNewFunds && typeof refreshAllRef.current === 'function') {
+          if (shouldRefreshAfterApply && isFunction(refreshAllRef.current)) {
             await refreshAllRef.current(codes);
           }
           const currentUser = useUserStore.getState().user;
@@ -1194,12 +1228,12 @@ export function useSyncManager({ showToast, refreshAllRef, setTempSeconds, setFu
             try {
               const latestFunds = storageStore.getItem('funds', []);
               const localSig = getFundCodesSignature(latestFunds, ['gztime']);
-              const cloudSig = getFundCodesSignature(Array.isArray(cloudData.funds) ? cloudData.funds : [], ['gztime']);
+              const cloudSig = getFundCodesSignature(isArray(cloudData.funds) ? cloudData.funds : [], ['gztime']);
               if (localSig !== cloudSig) {
                 await syncUserConfig(
                   currentUserId,
                   false,
-                  { funds: Array.isArray(latestFunds) ? latestFunds : [] },
+                  { funds: isArray(latestFunds) ? latestFunds : [] },
                   true,
                   options
                 );

@@ -6,7 +6,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { RotateCcw } from 'lucide-react';
 import { DatePicker, NumericInput } from './Common';
-import { isNumber } from 'lodash';
+import { isBoolean, isNumber } from 'lodash';
 import { CloseIcon } from './Icons';
 import ConfirmModal from './ConfirmModal';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -115,7 +115,7 @@ export default function DcaModal({ fund, plan, onClose, onConfirm, onReset }) {
     if (plan.feeRate != null) {
       setFeeRate(String(plan.feeRate));
     }
-    if (typeof plan.enabled === 'boolean') {
+    if (isBoolean(plan.enabled)) {
       setEnabled(plan.enabled);
     }
     if (isNumber(plan.weeklyDay)) {
@@ -338,7 +338,7 @@ export default function DcaModal({ fund, plan, onClose, onConfirm, onReset }) {
                       borderRadius: 12
                     }}
                   >
-                    <NumericInput value={feeRate} onChange={setFeeRate} step={0.01} min={0} placeholder="0.12" />
+                    <NumericInput value={feeRate} onChange={setFeeRate} step={0.1} min={0} placeholder="0.12" />
                   </div>
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>

@@ -19,7 +19,7 @@ export default function EmptyStateCard({ fundsLength = 0, currentTab = 'all', on
     >
       <div style={{ fontSize: '48px', marginBottom: 16, opacity: 0.5 }}>📂</div>
       <div className="muted" style={{ marginBottom: 20 }}>
-        {isEmpty ? '尚未添加基金' : '该分组下暂无数据'}
+        {isEmpty ? '尚未添加基金，请从顶部搜索基金名称添加到分组' : '该分组下暂无数据'}
       </div>
       {isGroupTab && fundsLength > 0 && (
         <button className="button" onClick={onAddToGroup}>

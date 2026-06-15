@@ -1,4 +1,5 @@
 'use client';
+import { isArray } from 'lodash';
 
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -6,7 +7,7 @@ import PcFundTable from './PcFundTable';
 import MobileFundTable from './MobileFundTable';
 import FundCard from './FundCard';
 
-export default function FundListView({
+const FundListView = React.memo(function FundListView({
   viewMode,
   isMobile,
   isGroupSummarySticky,
@@ -52,6 +53,7 @@ export default function FundListView({
   valuationSeries,
   collapsedCodes,
   collapsedTrends,
+  collapsedValuationTrends,
   collapsedEarnings,
   transactionsForTab,
   theme,
@@ -65,6 +67,7 @@ export default function FundListView({
   toggleTodayPercentMode,
   toggleCollapse,
   toggleTrendCollapse,
+  toggleValuationTrendCollapse,
   toggleEarningsCollapse,
   fundTagListsByCode,
   groupTotalHoldingAmount
@@ -122,7 +125,7 @@ export default function FundListView({
                     masked={maskAmounts}
                     getFundCardProps={getFundCardPropsForRow}
                     onFundTagsClick={openFundTagsEdit}
-                    fundExtraDataByCode={fundExtraDataByCode}
+                    fundExtraData={fundExtraDataByCode}
                   />
                 </div>
               </div>
@@ -166,7 +169,7 @@ export default function FundListView({
               getFundCardProps={getFundCardPropsForRow}
               masked={maskAmounts}
               onFundTagsClick={openFundTagsEdit}
-              fundExtraDataByCode={fundExtraDataByCode}
+              fundExtraData={fundExtraDataByCode}
             />
           )}
 
@@ -200,6 +203,7 @@ export default function FundListView({
                     valuationSeries={valuationSeries}
                     collapsedCodes={collapsedCodes}
                     collapsedTrends={collapsedTrends}
+                    collapsedValuationTrends={collapsedValuationTrends}
                     collapsedEarnings={collapsedEarnings}
                     transactions={transactionsForTab}
                     theme={theme}
@@ -214,13 +218,15 @@ export default function FundListView({
                     onTodayPercentModeToggle={toggleTodayPercentMode}
                     onToggleCollapse={toggleCollapse}
                     onToggleTrendCollapse={toggleTrendCollapse}
+                    onToggleValuationTrendCollapse={toggleValuationTrendCollapse}
                     onToggleEarningsCollapse={toggleEarningsCollapse}
                     masked={maskAmounts}
-                    fundTags={Array.isArray(fundTagListsByCode[f.code]) ? fundTagListsByCode[f.code] : []}
+                    fundTags={isArray(fundTagListsByCode[f.code]) ? fundTagListsByCode[f.code] : []}
                     onFundTagsClick={openFundTagsEdit}
                     fundExtraData={fundExtraDataByCode[f.code]}
                     groupTotalHoldingAmount={groupTotalHoldingAmount}
                     hasPending={f.hasPending}
+                    userId={userId}
                   />
                 </motion.div>
               ))}
@@ -229,4 +235,6 @@ export default function FundListView({
       </motion.div>
     </AnimatePresence>
   );
-}
+});
+
+export default FundListView;

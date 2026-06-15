@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import { isString } from 'lodash';
+import { isArray, isNumber, isObject, isString } from 'lodash';
 import { storageStore } from '../stores';
 import { withRetry } from '../lib/asyncHelper';
 import { getQueryClient } from '../lib/get-query-client';
@@ -86,7 +86,7 @@ const processRelatedSectorsQueue = async () => {
       if (error) throw error;
 
       const foundMap = new Map();
-      if (Array.isArray(data)) {
+      if (isArray(data)) {
         data.forEach((item) => {
           const c = String(item.fund_code).trim();
           const v = item.related_sector != null ? String(item.related_sector).trim() : '';
@@ -134,7 +134,7 @@ const processFundSecidsQueue = async () => {
     if (error) throw error;
 
     const foundMap = new Map();
-    if (Array.isArray(data)) {
+    if (isArray(data)) {
       data.forEach((item) => {
         const l = String(item.related_sector).trim();
         const s = item.secid != null ? String(item.secid).trim() : '';
@@ -169,7 +169,7 @@ const processFundSecidsQueue = async () => {
  * @param {string[]} codes
  */
 export const fetchRelatedSectorsBatch = async (codes, { cacheTime = ONE_DAY_MS, authSegment = 'anon' } = {}) => {
-  if (!Array.isArray(codes) || codes.length === 0) return {};
+  if (!isArray(codes) || codes.length === 0) return {};
   if (!isSupabaseConfigured) return {};
 
   const seg = authSegment != null && authSegment !== '' ? String(authSegment) : 'anon';
@@ -237,7 +237,7 @@ const SECTOR_QUOTE_CACHE_MS = 60 * 1000;
  * @param {string[]} labels
  */
 export const fetchFundSecidsBatch = async (labels, { cacheTime = ONE_DAY_MS } = {}) => {
-  if (!Array.isArray(labels) || labels.length === 0) return {};
+  if (!isArray(labels) || labels.length === 0) return {};
   if (!isSupabaseConfigured) return {};
 
   const qc = getQueryClient();
@@ -299,7 +299,7 @@ export const fetchFundSecidsBatch = async (labels, { cacheTime = ONE_DAY_MS } = 
  * @returns {Promise<Record<string, { name: string, code: string, pct: number|null }|null>>}
  */
 export const fetchEastmoneySectorQuotesBatch = async (secids, { cacheTime = SECTOR_QUOTE_CACHE_MS } = {}) => {
-  if (!Array.isArray(secids) || secids.length === 0) return {};
+  if (!isArray(secids) || secids.length === 0) return {};
   if (typeof fetch === 'undefined') return {};
 
   const qc = getQueryClient();
@@ -334,7 +334,7 @@ export const fetchEastmoneySectorQuotesBatch = async (secids, { cacheTime = SECT
           if (!res.ok) return;
           const json = await res.json();
           const diff = json?.data?.diff;
-          if (!Array.isArray(diff)) return;
+          if (!isArray(diff)) return;
 
           for (const item of diff) {
             const code = item.f12 != null ? String(item.f12) : '';
@@ -704,12 +704,10 @@ export const fetchNetValueRangeFromTrend = async (code, sdate, edate, options = 
   try {
     const pz = await fetchFundPingzhongdata(String(code).trim(), { cacheTime });
     const trend = pz?.Data_netWorthTrend;
-    if (!Array.isArray(trend) || trend.length === 0) return [];
+    if (!isArray(trend) || trend.length === 0) return [];
 
     // 过滤出有效数据点并按时间升序排列
-    const valid = trend
-      .filter((d) => d && typeof d.x === 'number' && Number.isFinite(Number(d.y)))
-      .sort((a, b) => a.x - b.x);
+    const valid = trend.filter((d) => d && isNumber(d.x) && Number.isFinite(Number(d.y))).sort((a, b) => a.x - b.x);
 
     // 按日期去重（同一天可能有多个数据点，取最后一条）并转换格式
     const byDate = new Map();
@@ -888,7 +886,7 @@ function ensureJsonpgzDispatcher() {
 
   const dispatcher = (json) => {
     try {
-      if (!json || typeof json !== 'object') {
+      if (!json || !isObject(json)) {
         fundDebugLog('jsonpgz called with invalid payload', json);
         // 部分情况下接口会回调 jsonpgz() 但不给参数（undefined）。
         // 若当前只有 1 个 pending，可视为该请求失败信号，直接触发其 fallback，避免一直等到超时。
@@ -1073,6 +1071,34 @@ export const fetchQdiiValuationFromSupabase = async (code) => {
 };
 
 /**
+ * 通过 Edge Function best-valuation-source 查询指定日期各数据源估值，
+ * 与实际涨跌幅比对，返回最准确的数据源编号。
+ *
+ * @param {string} code - 基金代码
+ * @param {string} jzrq - 最新净值日期（如 "2026-06-10"）
+ * @param {number} actualZzl - 实际涨跌幅（百分比，如 1.23 表示 +1.23%）
+ * @returns {Promise<{ bestSource: number|null, isYesterdayAccuracy: boolean }|null>}
+ */
+export async function fetchBestValuationSource(code, jzrq, actualZzl) {
+  if (!isSupabaseConfigured || !supabase?.functions?.invoke) return null;
+  const c = code != null ? String(code).trim() : '';
+  if (!c || !jzrq || !isNumber(actualZzl) || !Number.isFinite(actualZzl)) return null;
+
+  try {
+    const { data, error } = await withRetry(() =>
+      supabase.functions.invoke('best-valuation-source', {
+        body: { code: c, jzrq, actualZzl }
+      })
+    );
+
+    if (error || !data?.success) return null;
+    return data.data || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * 按基金编码与数据源类型获取估值（天天基金 fundgz 或新浪估算曲线末点）。
  * @param {string} code - 基金编码
  * @param {number | string} [dataSource=1] - 1 天天基金；2、3 新浪估算不同口径
@@ -1090,11 +1116,7 @@ export async function fetchFundValuationBySource(code, dataSource = 1) {
   if (ds === 2 || ds === 3) {
     fundDebugLog('fetchFundValuationBySource sina', { code: c, dataSource: ds });
     const res = await fetchSinaEstimateNetworthResponse(c);
-    if (
-      !res?.result?.data?.networth ||
-      !Array.isArray(res.result.data.networth) ||
-      res.result.data.networth.length === 0
-    ) {
+    if (!res?.result?.data?.networth || !isArray(res.result.data.networth) || res.result.data.networth.length === 0) {
       throw new Error('sina no data');
     }
     const networth = res.result.data.networth;
@@ -1196,7 +1218,7 @@ export async function fetchFundValuationBySource(code, dataSource = 1) {
         fundDebugLog('fetchFundValuationBySource jsonpgz', { code: c, fundcode: json?.fundcode });
         cleanupScript();
 
-        if (!json || typeof json !== 'object') {
+        if (!json || !isObject(json)) {
           trySupabaseFallback(new Error('invalid json'));
           return;
         }
@@ -1227,6 +1249,42 @@ export async function fetchFundValuationBySource(code, dataSource = 1) {
   });
 }
 
+/**
+ * 获取基金申赎确认天数（SSBCFMDATA）
+ * 通过天天基金移动端 API FundMNBaseInfo 获取。
+ * - 返回 1 表示 T+1 确认（普通 A 股基金）
+ * - 返回 2 表示 T+2 确认（QDII 等跨境基金）
+ * - 返回 null 表示获取失败
+ *
+ * 结果通过 TanStack Query 缓存 24 小时（此属性极少变动）。
+ * @param {string} code - 基金代码
+ * @returns {Promise<number|null>}
+ */
+export const fetchFundConfirmDays = async (code) => {
+  const c = code != null ? String(code).trim() : '';
+  if (!c) return null;
+
+  const qc = getQueryClient();
+  try {
+    return await qc.fetchQuery({
+      queryKey: qk.fundConfirmDays(c),
+      queryFn: async () => {
+        const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNBaseInfo?FCODE=${c}&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=rtf${Date.now()}`;
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const json = await resp.json();
+        if (!json || !json.Success || !json.Datas) return null;
+        const raw = json.Datas.SSBCFMDATA;
+        const num = Number(raw);
+        return Number.isFinite(num) && num > 0 ? num : null;
+      },
+      staleTime: ONE_DAY_MS
+    });
+  } catch (e) {
+    return null;
+  }
+};
+
 export const fetchFundData = async (c, overrideDataSource) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('无浏览器环境');
@@ -1241,7 +1299,7 @@ export const fetchFundData = async (c, overrideDataSource) => {
   if (!overrideDataSource) {
     try {
       const arr = storageStore.getItem('funds', []);
-      if (Array.isArray(arr)) {
+      if (isArray(arr)) {
         const f = arr.find((x) => x.code === code);
         if (f) {
           if (f.dataSource) dataSource = f.dataSource;
@@ -1539,7 +1597,33 @@ export const fetchFundHoldings = async (code) => {
             });
           } catch (e) {}
         }
-        resolveH({ holdings, holdingsReportDate, holdingsIsLastQuarter });
+
+        let assetAllocation = [];
+        try {
+          const pz = await fetchFundPingzhongdata(code);
+          const rawSeries = pz?.Data_assetAllocation?.series || [];
+          let filtered = rawSeries.filter((s) => s.type !== 'line' && !String(s.name || '').includes('净资产'));
+          let sum = 0;
+          let parsedSeries = [];
+          filtered.forEach((s) => {
+            if (s.data && s.data.length > 0) {
+              const val = Number(s.data[s.data.length - 1]);
+              if (!Number.isNaN(val) && val > 0) {
+                sum += val;
+                parsedSeries.push({ name: String(s.name).replace('占净比', ''), value: val });
+              }
+            }
+          });
+          if (sum < 100 && parsedSeries.length > 0) {
+            const other = 100 - sum;
+            if (other >= 0.01) {
+              parsedSeries.push({ name: '其他', value: other });
+            }
+          }
+          assetAllocation = parsedSeries;
+        } catch (e) {}
+
+        resolveH({ holdings, holdingsReportDate, holdingsIsLastQuarter, assetAllocation });
         fundDebugLog('fetchFundHoldings resolved', {
           code,
           holdingsCount: holdings?.length || 0,
@@ -1547,7 +1631,9 @@ export const fetchFundHoldings = async (code) => {
           holdingsIsLastQuarter
         });
       })
-      .catch(() => resolveH({ holdings: [], holdingsReportDate: null, holdingsIsLastQuarter: false }));
+      .catch(() =>
+        resolveH({ holdings: [], holdingsReportDate: null, holdingsIsLastQuarter: false, assetAllocation: [] })
+      );
   });
 };
 
@@ -1711,7 +1797,7 @@ const MARKET_INDEX_KEYS = [
 ];
 
 function parseIndexRaw(data) {
-  if (!data || typeof data !== 'string') return null;
+  if (!data || !isString(data)) return null;
   const parts = data.split('~');
   if (parts.length < 33) return null;
   const name = parts[1] || '';
@@ -1728,7 +1814,7 @@ function parseIndexRaw(data) {
 }
 
 function parseGlobalIndexRaw(data) {
-  if (!data || typeof data !== 'string') return null;
+  if (!data || !isString(data)) return null;
   const parts = data.split('~');
   if (parts.length < 6) return null;
   const name = parts[1] || '';
@@ -1965,10 +2051,8 @@ function parsePingzhongSylNumber(raw) {
  * pingzhongdata 另提供 syl_6y（近六月）等；近周无独立字段，由走势推算。
  */
 export function computeWeekReturnFromNetWorthTrend(trend) {
-  if (!Array.isArray(trend) || trend.length < 2) return null;
-  const valid = trend
-    .filter((d) => d && typeof d.x === 'number' && Number.isFinite(Number(d.y)))
-    .sort((a, b) => a.x - b.x);
+  if (!isArray(trend) || trend.length < 2) return null;
+  const valid = trend.filter((d) => d && isNumber(d.x) && Number.isFinite(Number(d.y))).sort((a, b) => a.x - b.x);
   if (valid.length < 2) return null;
   const latest = valid[valid.length - 1];
   const latestMs = latest.x;
@@ -1992,10 +2076,8 @@ export function computeWeekReturnFromNetWorthTrend(trend) {
  * @returns {{ type: 'up' | 'down', days: number } | null}
  */
 export function calculateConsecutiveTrend(trend) {
-  if (!Array.isArray(trend) || trend.length < 2) return null;
-  const valid = trend
-    .filter((d) => d && typeof d.x === 'number' && Number.isFinite(Number(d.y)))
-    .sort((a, b) => a.x - b.x);
+  if (!isArray(trend) || trend.length < 2) return null;
+  const valid = trend.filter((d) => d && isNumber(d.x) && Number.isFinite(Number(d.y))).sort((a, b) => a.x - b.x);
   if (valid.length < 2) return null;
 
   let count = 0;
@@ -2082,13 +2164,13 @@ export const fetchFundHistory = async (code, range = '1m') => {
     const trend = pz?.Data_netWorthTrend;
     const grandTotal = pz?.Data_grandTotal;
 
-    if (Array.isArray(trend) && trend.length) {
+    if (isArray(trend) && trend.length) {
       const startMs = start.startOf('day').valueOf();
       const endMs = end.endOf('day').valueOf();
 
       // 若起始日没有净值，则往前推到最近一日有净值的数据作为有效起始
       const validTrend = trend
-        .filter((d) => d && typeof d.x === 'number' && Number.isFinite(Number(d.y)) && d.x <= endMs)
+        .filter((d) => d && isNumber(d.x) && Number.isFinite(Number(d.y)) && d.x <= endMs)
         .sort((a, b) => a.x - b.x);
       const startDayEndMs = startMs + 24 * 60 * 60 * 1000 - 1;
       const hasPointOnStartDay = validTrend.some((d) => d.x >= startMs && d.x <= startDayEndMs);
@@ -2102,18 +2184,19 @@ export const fetchFundHistory = async (code, range = '1m') => {
         .filter((d) => d.x >= effectiveStartMs && d.x <= endMs)
         .map((d) => {
           const value = Number(d.y);
+          const equityReturn = isNumber(d.equityReturn) ? Number(d.equityReturn) : null;
           const date = dayjs(d.x).tz(TZ).format('YYYY-MM-DD');
-          return { date, value };
+          return { date, value, equityReturn };
         });
 
       // 解析 Data_grandTotal 为多条对比曲线，使用同一有效起始日
-      if (Array.isArray(grandTotal) && grandTotal.length) {
+      if (isArray(grandTotal) && grandTotal.length) {
         const grandTotalSeries = grandTotal
           .map((series) => {
-            if (!series || !series.data || !Array.isArray(series.data)) return null;
+            if (!series || !series.data || !isArray(series.data)) return null;
             const name = series.name || '';
             const points = series.data
-              .filter((item) => Array.isArray(item) && typeof item[0] === 'number')
+              .filter((item) => isArray(item) && isNumber(item[0]))
               .map(([ts, val]) => {
                 if (ts < effectiveStartMs || ts > endMs) return null;
                 const numVal = Number(val);
@@ -2140,6 +2223,20 @@ export const fetchFundHistory = async (code, range = '1m') => {
   return [];
 };
 
+export const fetchFundValuationTrend = async (code, range = '3m') => {
+  if (!isSupabaseConfigured) return [];
+  if (!supabase?.functions?.invoke) return [];
+
+  const { data, error } = await withRetry(() =>
+    supabase.functions.invoke('get-fund-valuation-trend', {
+      body: { fund_code: code, range }
+    })
+  );
+
+  if (error || !data || data.error) return [];
+  return isArray(data.data) ? data.data : [];
+};
+
 export const parseFundTextWithLLM = async (text) => {
   if (!text) return null;
   if (!isSupabaseConfigured) return null;
@@ -2152,13 +2249,23 @@ export const parseFundTextWithLLM = async (text) => {
       })
     );
 
+    // 处理每日 OCR 用量限流
+    if (data?.error === 'DAILY_LIMIT_EXCEEDED') {
+      const err = new Error(data.message || '今日 OCR 识别次数已达上限');
+      err.code = 'DAILY_LIMIT_EXCEEDED';
+      err.remaining = 0;
+      throw err;
+    }
+
     if (error) return null;
     if (!data || data.success !== true) return null;
-    if (!Array.isArray(data.data)) return null;
+    if (!isArray(data.data)) return null;
 
     // 保持与旧实现兼容：返回 JSON 字符串，由调用方 JSON.parse
     return JSON.stringify(data.data);
   } catch (e) {
+    // 限流错误向上传播，让调用方捕获并展示提示
+    if (e?.code === 'DAILY_LIMIT_EXCEEDED') throw e;
     return null;
   }
 };
@@ -2186,4 +2293,30 @@ export const fetchFundValuationRanking = async (sort = 3, order = 'desc', page =
 
   // 保持与原 JSONP 返回结构一致：{ Data: { list: [...], ... } }
   return { Data: data.data };
+};
+
+/**
+ * 查询当前用户今日 OCR 剩余可用次数
+ * @param {string} userId 当前用户 ID
+ * @param {number} [maxLimit=5] 每日上限
+ * @returns {Promise<{ remaining: number, used: number, max: number }>}
+ */
+export const fetchOcrDailyRemaining = async (userId, maxLimit = 5) => {
+  if (!userId || !isSupabaseConfigured) return { remaining: maxLimit, used: 0, max: maxLimit };
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('ocr_daily_usage')
+      .select('count')
+      .eq('user_id', userId)
+      .eq('usage_date', today)
+      .maybeSingle();
+
+    if (error) return { remaining: maxLimit, used: 0, max: maxLimit };
+    const used = data?.count || 0;
+    return { remaining: Math.max(0, maxLimit - used), used, max: maxLimit };
+  } catch {
+    return { remaining: maxLimit, used: 0, max: maxLimit };
+  }
 };

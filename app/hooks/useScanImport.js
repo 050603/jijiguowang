@@ -1,3 +1,4 @@
+import { isArray, isFunction } from 'lodash';
 import { useState, useRef } from 'react';
 import { createWorker } from 'tesseract.js';
 import { toast as sonnerToast } from 'sonner';
@@ -37,16 +38,16 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
   const isScanning = useModalStore((s) => s.isScanning);
   const isScanImporting = useModalStore((s) => s.isScanImporting);
   const setScanModalOpen = (v) =>
-    useModalStore.setState({ scanModalOpen: typeof v === 'function' ? v(useModalStore.getState().scanModalOpen) : v });
+    useModalStore.setState({ scanModalOpen: isFunction(v) ? v(useModalStore.getState().scanModalOpen) : v });
   const setScanConfirmModalOpen = (v) =>
     useModalStore.setState({
-      scanConfirmModalOpen: typeof v === 'function' ? v(useModalStore.getState().scanConfirmModalOpen) : v
+      scanConfirmModalOpen: isFunction(v) ? v(useModalStore.getState().scanConfirmModalOpen) : v
     });
   const setIsScanning = (v) =>
-    useModalStore.setState({ isScanning: typeof v === 'function' ? v(useModalStore.getState().isScanning) : v });
+    useModalStore.setState({ isScanning: isFunction(v) ? v(useModalStore.getState().isScanning) : v });
   const setIsScanImporting = (v) =>
     useModalStore.setState({
-      isScanImporting: typeof v === 'function' ? v(useModalStore.getState().isScanImporting) : v
+      isScanImporting: isFunction(v) ? v(useModalStore.getState().isScanImporting) : v
     });
   const [scannedFunds, setScannedFunds] = useState([]);
   const [selectedScannedCodes, setSelectedScannedCodes] = useState(new Set());
@@ -101,7 +102,14 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
 
       setScanProgress((prev) => ({ ...prev, current: i + 1 }));
 
-      const fundsResString = await parseFundTextWithLLM(text);
+      let fundsResString;
+      try {
+        fundsResString = await parseFundTextWithLLM(text);
+      } catch (e) {
+        // 限流错误直接向上传播，中止整个扫描流程
+        if (e?.code === 'DAILY_LIMIT_EXCEEDED') throw e;
+        fundsResString = null;
+      }
       let fundsRes = null;
       try {
         fundsRes = JSON.parse(fundsResString);
@@ -109,7 +117,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
         console.error(e);
       }
 
-      if (Array.isArray(fundsRes) && fundsRes.length > 0) {
+      if (isArray(fundsRes) && fundsRes.length > 0) {
         fundsRes.forEach((fund) => {
           const code = fund.fundCode || '';
           const name = (fund.fundName || '').trim();
@@ -145,7 +153,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
         setScanProgress((prev) => ({ ...prev, current: i + 1 }));
         try {
           const list = await searchFundsWithTimeout(fundItem.fundName, 8000);
-          if (Array.isArray(list) && list.length === 1) {
+          if (isArray(list) && list.length === 1) {
             const found = list[0];
             if (found && found.CODE && !addedFundCodes.has(found.CODE)) {
               addedFundCodes.add(found.CODE);
@@ -179,7 +187,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
       let found = null;
       try {
         const list = await searchFundsWithTimeout(code, 8000);
-        found = Array.isArray(list) ? list.find((d) => d.CODE === code) : null;
+        found = isArray(list) ? list.find((d) => d.CODE === code) : null;
       } catch (e) {
         found = null;
       }
@@ -217,8 +225,12 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
       await processTextsInternal(lastOcrTexts);
     } catch (err) {
       if (!abortScanRef.current) {
-        console.error('OCR Retry Error:', err);
-        showToast('重新识别失败，请重试', 'error');
+        if (err?.code === 'DAILY_LIMIT_EXCEEDED') {
+          showToast(err.message || '今日 OCR 识别次数已达上限', 'error');
+        } else {
+          console.error('OCR Retry Error:', err);
+          showToast('重新识别失败，请重试', 'error');
+        }
       }
     } finally {
       setIsScanning(false);
@@ -307,8 +319,12 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
       }
     } catch (err) {
       if (!abortScanRef.current) {
-        console.error('OCR Error:', err);
-        showToast('图片识别失败，请重试或更换更清晰的截图', 'error');
+        if (err?.code === 'DAILY_LIMIT_EXCEEDED') {
+          showToast(err.message || '今日 OCR 识别次数已达上限', 'error');
+        } else {
+          console.error('OCR Error:', err);
+          showToast('图片识别失败，请重试或更换更清晰的截图', 'error');
+        }
       }
     } finally {
       setIsScanning(false);
@@ -352,7 +368,7 @@ export function useScanImport({ setCurrentTab, setValuationSeries, showToast, no
       if (targetGroupId === 'all') return funds.some((f) => f.code === code);
       if (targetGroupId === 'fav') return favorites?.has?.(code);
       const g = groups.find((x) => x.id === targetGroupId);
-      return !!(g && Array.isArray(g.codes) && g.codes.includes(code));
+      return !!(g && isArray(g.codes) && g.codes.includes(code));
     };
 
     const codes = rawCodes.filter((c) => {

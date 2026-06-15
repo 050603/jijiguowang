@@ -3,7 +3,7 @@
 一个基于 Next.js 开发的基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
 预览地址：
 
-1. [https://fund.cc.cd/](https://fund.cc.cd/) （加速国内访问）
+1. [https://fund.cc.cd/](https://fund.cc.cd/) （推荐，加速国内访问）
 2. [https://hzm0321.github.io/real-time-fund/](https://hzm0321.github.io/real-time-fund/)
 
 ## 📸 界面预览
@@ -320,6 +320,17 @@ docker compose up -d
 - **无担保**：软件按「原样」提供，不提供任何明示或暗示的担保。
 
 完整协议文本见仓库根目录 [LICENSE](./LICENSE) 文件，或 [GNU AGPL v3 官方说明](https://www.gnu.org/licenses/agpl-3.0.html)。
+
+## 🎁 友情推荐：FreeModel AI - 免费好用的 AI 模型 API 服务
+
+在开发或使用本项目时，如果你需要稳定、高速的大模型 API（如大模型 OCR 识别或其它 AI 功能），极力推荐体验 **[FreeModel AI](https://freemodel.dev/invite/FRE-a22f65d4)**：
+
+- **超大免费额度**：新账户注册直接赠送 **$300 免费 API 额度**，无需绑定信用卡或支付信息。
+- **一站式模型调用**：通过一个统一的 API 端点，即可接入包括 FRE 核心系列（如 FRE-5.4、FRE-5.5 等）在内的多种主流大语言模型。
+- **完美兼容 OpenAI**：完全兼容 OpenAI 接口规范，无需重构代码，可接入 codex ，只需替换 `base_url` 与 `api_key` 即可直接平替、无缝使用。
+- **开发者友好**：低延迟、高可用性，特别适合独立开发者和团队进行项目开发与原型验证。
+
+👉 **[立即点击注册，领取 $300 免费额度](https://freemodel.dev/invite/FRE-a22f65d4)**
 
 ---
 

@@ -2,6 +2,10 @@
 
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { fetchOcrDailyRemaining } from '../api/fund';
+import { ocrDailyRemaining } from '../lib/query-keys';
+import { useUserStore } from '../stores';
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -12,6 +16,19 @@ function getDroppedImageFiles(dataTransfer) {
 
 export default function ScanPickModal({ onClose, onPick, onFilesDrop, isScanning }) {
   const [isDragging, setIsDragging] = useState(false);
+  const user = useUserStore((s) => s.user);
+
+  const { data: ocrUsage } = useQuery({
+    queryKey: ocrDailyRemaining(user?.id),
+    queryFn: () => fetchOcrDailyRemaining(user?.id),
+    enabled: !!user?.id,
+    staleTime: 30_000
+  });
+
+  const remaining = ocrUsage?.remaining ?? null;
+  const max = ocrUsage?.max ?? 10;
+  const isExhausted = remaining !== null && remaining <= 0;
+  const isWarning = remaining !== null && remaining > 0 && remaining <= 3;
 
   const handleDragOver = useCallback(
     (e) => {
@@ -70,6 +87,11 @@ export default function ScanPickModal({ onClose, onPick, onFilesDrop, isScanning
       >
         <div className="title" style={{ marginBottom: 12 }}>
           <span>选择持仓截图</span>
+          {remaining !== null && (
+            <span className={`ocr-quota-badge${isExhausted ? ' exhausted' : isWarning ? ' warning' : ''}`}>
+              今日剩余识别次数 {remaining}/{max}
+            </span>
+          )}
         </div>
         <div className="muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
           从相册选择一张或多张持仓截图，系统将自动识别其中的

@@ -6,18 +6,19 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
-import { isNumber, isString } from 'lodash';
+import { isArray, isNumber, isObject, isString } from 'lodash';
 import { PlusCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, formatMoney } from '@/lib/utils';
 import { useStorageStore } from '@/app/stores';
 import { fetchFundHoldings, fetchFundData } from '@/app/api/fund';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { Stat, ConsecutiveTrendBadge } from '../Common';
 import FundTrendChart from '../FundTrendChart';
+import FundValuationTrendChart from '../FundValuationTrendChart';
 import FundIntradayChart from '../FundIntradayChart';
 import FundDailyEarnings from '../FundDailyEarnings';
 import { ChevronIcon, SettingsIcon, StarIcon, SwitchIcon, TrashIcon, LinkIcon } from '../Icons';
@@ -28,6 +29,7 @@ dayjs.extend(timezone);
 dayjs.extend(isSameOrAfter);
 
 import { DEFAULT_TZ } from '@/app/constants';
+import { isNavUpdated } from '@/app/lib/fundHelpers';
 const getBrowserTimeZone = () => {
   if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -45,7 +47,7 @@ const formatDisplayDate = (value) => {
   if (!d.isValid()) return value;
 
   // 如果是数字（时间戳）或者字符串中包含显式的时间模式，则展示时分
-  const isTimestamp = typeof value === 'number' || (typeof value === 'string' && /^\d{10,13}$/.test(value));
+  const isTimestamp = isNumber(value) || (isString(value) && /^\d{10,13}$/.test(value));
   const hasTimePattern = /[T\s]\d{1,2}:\d{2}/.test(String(value));
   const showTime = isTimestamp || hasTimePattern;
 
@@ -65,7 +67,8 @@ function MoreSection({
   fundExtraData,
   masked,
   groupTotalHoldingAmount,
-  isAdded = true
+  isAdded = true,
+  userId
 }) {
   const [expanded, setExpanded] = useState(false);
   const isMobile = useIsMobile();
@@ -87,10 +90,7 @@ function MoreSection({
 
   const holdingCostValue =
     holding && isNumber(holding.cost) && isNumber(holding.share) ? holding.cost * holding.share : null;
-  const holdingCost =
-    holdingCostValue == null
-      ? '—'
-      : `¥${Number(holdingCostValue).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const holdingCost = holdingCostValue == null ? '—' : `¥${formatMoney(holdingCostValue)}`;
 
   const holdingAmount = profit?.amount;
   const holdingRatioValue =
@@ -187,6 +187,7 @@ export default function Index({
   valuationSeries,
   collapsedCodes,
   collapsedTrends,
+  collapsedValuationTrends,
   collapsedEarnings,
   transactions,
   theme,
@@ -200,6 +201,7 @@ export default function Index({
   onTodayPercentModeToggle,
   onToggleCollapse,
   onToggleTrendCollapse,
+  onToggleValuationTrendCollapse,
   onToggleEarningsCollapse,
   layoutMode = 'card', // 'card' | 'drawer'，drawer 时前10重仓与业绩走势以 Tabs 展示
   masked = false,
@@ -210,7 +212,8 @@ export default function Index({
   groupTotalHoldingAmount = 0,
   fallbackFund,
   hasPending = false,
-  onAddFund
+  onAddFund,
+  userId
 }) {
   const { funds, refreshMs } = useStorageStore();
 
@@ -321,10 +324,22 @@ export default function Index({
     };
   }, [fundCode, refreshMs]);
 
+  const top10WeightSum = useMemo(() => {
+    if (!isArray(topHoldings.holdings)) return 0;
+    let sum = 0;
+    topHoldings.holdings.forEach((h) => {
+      if (h.weight) {
+        const val = parseFloat(h.weight);
+        if (!isNaN(val)) sum += val;
+      }
+    });
+    return sum;
+  }, [topHoldings.holdings]);
+
   const holding = holdings?.[f?.code];
   const profit = getHoldingProfit?.(f, holding) ?? null;
   const hasHoldings =
-    topHoldings.holdingsIsLastQuarter && Array.isArray(topHoldings.holdings) && topHoldings.holdings.length > 0;
+    topHoldings.holdingsIsLastQuarter && isArray(topHoldings.holdings) && topHoldings.holdings.length > 0;
   // “我的收益”(每日收益)只依赖份额；成本价缺失也应可展示
   const hasHoldingShare = holding && isNumber(holding.share) && holding.share > 0;
 
@@ -335,7 +350,7 @@ export default function Index({
   const dailyEarningsSeries = useMemo(() => {
     if (!hasHoldingShare) return [];
     const list = fundDailyEarnings?.[f?.code];
-    return Array.isArray(list) ? list : [];
+    return isArray(list) ? list : [];
   }, [fundDailyEarnings, f?.code, hasHoldingShare]);
 
   const displayDailyEarningsSeries = useMemo(() => {
@@ -368,6 +383,10 @@ export default function Index({
           background: theme === 'light' ? 'rgb(250,250,250)' : 'none'
         }
       : {};
+
+  const isTrendExpanded = !collapsedTrends?.has(fundCode);
+  const isValuationTrendExpanded = !collapsedValuationTrends?.has(fundCode);
+  const isEarningsExpanded = !collapsedEarnings?.has(fundCode);
 
   return (
     <motion.div
@@ -457,14 +476,14 @@ export default function Index({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{f.jzrq === todayStr ? '今日净值已更新' : ''}</p>
+                <p>{isNavUpdated(f.jzrq, todayStr, f.confirmDays) ? '今日净值已更新' : ''}</p>
               </TooltipContent>
             </Tooltip>
             <span className="muted">
               #{f.code}
               {hasPending && <span className="pending-indicator">待</span>}
               {dcaPlans?.[f.code]?.enabled === true && <span className="dca-indicator">定</span>}
-              {f.jzrq === todayStr && <span className="updated-indicator">✓</span>}
+              {isNavUpdated(f.jzrq, todayStr, f.confirmDays) && <span className="updated-indicator">✓</span>}
               {fundTags.length > 0 && (
                 <span
                   style={{
@@ -477,7 +496,7 @@ export default function Index({
                 >
                   {fundTags.map((raw, idx) => {
                     const item =
-                      raw && typeof raw === 'object' && raw.name != null
+                      raw && isObject(raw) && raw.name != null
                         ? {
                             name: String(raw.name).trim(),
                             theme: String(raw.theme ?? 'default').trim() || 'default'
@@ -573,7 +592,7 @@ export default function Index({
         ) : (
           <>
             {(() => {
-              const hasTodayData = f.jzrq === todayStr;
+              const hasTodayData = isNavUpdated(f.jzrq, todayStr, f.confirmDays);
               let isYesterdayChange = false;
               let isPreviousTradingDay = false;
               if (!hasTodayData && isString(f.jzrq)) {
@@ -691,11 +710,7 @@ export default function Index({
                     <span className="label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       持仓金额 <SettingsIcon width="12" height="12" style={{ opacity: 0.7 }} />
                     </span>
-                    <span className="value">
-                      {masked
-                        ? '******'
-                        : `${Number(profit.amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    </span>
+                    <span className="value">{masked ? '******' : `${formatMoney(profit.amount)}`}</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -754,7 +769,7 @@ export default function Index({
                                     ? (profit.profitToday / (holding.cost * holding.share)) * 100
                                     : 0
                                 ).toFixed(2)}%`
-                              : `${Math.abs(profit.profitToday).toFixed(2)}`}
+                              : `${formatMoney(Math.abs(profit.profitToday))}`}
                           </>
                         )}
                       </span>
@@ -804,7 +819,7 @@ export default function Index({
                                     ? (profit.profitTotal / (holding.cost * holding.share)) * 100
                                     : 0
                                 ).toFixed(2)}%`
-                              : `${Math.abs(profit.profitTotal).toFixed(2)}`}
+                              : `${formatMoney(Math.abs(profit.profitTotal))}`}
                           </>
                         )}
                       </span>
@@ -829,11 +844,12 @@ export default function Index({
         masked={masked}
         groupTotalHoldingAmount={groupTotalHoldingAmount}
         isAdded={isAdded}
+        userId={userId}
       />
 
       {(() => {
         const currentSeries = f.fundValuationTimeseries?.[f.code] || valuationSeries?.[f.code];
-        const showIntraday = !f.noValuation && Array.isArray(currentSeries) && currentSeries.length >= 1;
+        const showIntraday = !f.noValuation && isArray(currentSeries) && currentSeries.length >= 1;
         if (!showIntraday) return null;
 
         if (f.gztime && toTz(todayStr).startOf('day').isAfter(toTz(f.gztime).startOf('day'))) {
@@ -863,19 +879,37 @@ export default function Index({
       {layoutMode === 'drawer' ? (
         <Tabs defaultValue={hasHoldings ? 'holdings' : 'trend'} className="w-full">
           <TabsList className="w-full flex">
-            {hasHoldings && <TabsTrigger value="holdings">前10重仓股票</TabsTrigger>}
+            {hasHoldings && <TabsTrigger value="holdings">前10重仓</TabsTrigger>}
             <TabsTrigger value="trend">业绩走势</TabsTrigger>
+            <TabsTrigger value="valuation_trend">估值走势</TabsTrigger>
             {hasHoldingAmount && <TabsTrigger value="earnings">我的收益</TabsTrigger>}
           </TabsList>
           {hasHoldings && (
             <TabsContent value="holdings" className="mt-3 outline-none">
+              {topHoldings.assetAllocation && topHoldings.assetAllocation.length > 0 && (
+                <div className="row" style={{ marginBottom: 12 }}>
+                  {topHoldings.assetAllocation.map((item, idx) => (
+                    <Stat
+                      key={idx}
+                      label={item.name}
+                      value={`${item.value.toFixed(2)}%`}
+                      delta={item.name === '股票' ? 1 : undefined}
+                    />
+                  ))}
+                </div>
+              )}
               <div
                 style={{
                   display: 'flex',
-                  justifyContent: 'flex-end',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                   marginBottom: 4
                 }}
               >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="muted">重仓股票：</span>
+                  <span style={{ color: 'var(--foreground)' }}>{top10WeightSum.toFixed(2)}%</span>
+                </div>
                 <span className="muted">涨跌幅 / 占比</span>
               </div>
               <div className="list">
@@ -899,6 +933,21 @@ export default function Index({
               </div>
             </TabsContent>
           )}
+          <TabsContent value="trend" className="mt-3 outline-none">
+            <FundTrendChart
+              key={`${f.code}-${theme}`}
+              code={f.code}
+              isExpanded
+              onToggleExpand={() => onToggleTrendCollapse?.(f.code)}
+              // 未设置持仓金额时，不展示买入/卖出标记与标签
+              transactions={profit ? transactions?.[f.code] || [] : []}
+              theme={theme}
+              hideHeader
+            />
+          </TabsContent>
+          <TabsContent value="valuation_trend" className="mt-3 outline-none">
+            <FundValuationTrendChart code={f.code} isExpanded theme={theme} userId={userId} hideHeader />
+          </TabsContent>
           {hasHoldingAmount && (
             <TabsContent value="earnings" className="mt-3 outline-none">
               {displayDailyEarningsSeries.length > 0 ? (
@@ -913,18 +962,6 @@ export default function Index({
               )}
             </TabsContent>
           )}
-          <TabsContent value="trend" className="mt-3 outline-none">
-            <FundTrendChart
-              key={`${f.code}-${theme}`}
-              code={f.code}
-              isExpanded
-              onToggleExpand={() => onToggleTrendCollapse?.(f.code)}
-              // 未设置持仓金额时，不展示买入/卖出标记与标签
-              transactions={profit ? transactions?.[f.code] || [] : []}
-              theme={theme}
-              hideHeader
-            />
-          </TabsContent>
         </Tabs>
       ) : (
         <>
@@ -937,7 +974,7 @@ export default function Index({
               >
                 <div className="row" style={{ width: '100%', flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>前10重仓股票</span>
+                    <span>前10重仓</span>
                     <ChevronIcon
                       width="16"
                       height="16"
@@ -948,7 +985,6 @@ export default function Index({
                       }}
                     />
                   </div>
-                  <span className="muted">涨跌幅 / 占比</span>
                 </div>
               </div>
               <AnimatePresence>
@@ -960,6 +996,32 @@ export default function Index({
                     transition={{ duration: 0.3, ease: 'easeInOut' }}
                     style={{ overflow: 'hidden' }}
                   >
+                    {topHoldings.assetAllocation && topHoldings.assetAllocation.length > 0 && (
+                      <div className="row" style={{ marginBottom: 12, marginTop: 4 }}>
+                        {topHoldings.assetAllocation.map((item, idx) => (
+                          <Stat
+                            key={idx}
+                            label={item.name}
+                            value={`${item.value.toFixed(2)}%`}
+                            delta={item.name === '股票' ? 1 : undefined}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 4
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span className="muted">重仓股票：</span>
+                        <span style={{ color: 'var(--foreground)' }}>{top10WeightSum.toFixed(2)}%</span>
+                      </div>
+                      <span className="muted">涨跌幅 / 占比</span>
+                    </div>
                     <div className="list">
                       {topHoldings.holdings.map((h, idx) => (
                         <div className="item" key={idx}>
@@ -987,11 +1049,18 @@ export default function Index({
           <FundTrendChart
             key={`${f.code}-${theme}`}
             code={f.code}
-            isExpanded={!collapsedTrends?.has(f.code)}
+            isExpanded={isTrendExpanded}
             onToggleExpand={() => onToggleTrendCollapse?.(f.code)}
             // 未设置持仓金额时，不展示买入/卖出标记与标签
             transactions={profit ? transactions?.[f.code] || [] : []}
             theme={theme}
+          />
+          <FundValuationTrendChart
+            code={f.code}
+            isExpanded={isValuationTrendExpanded}
+            onToggleExpand={() => onToggleValuationTrendCollapse?.(f.code)}
+            theme={theme}
+            userId={userId}
           />
           {hasHoldingAmount && (
             <>

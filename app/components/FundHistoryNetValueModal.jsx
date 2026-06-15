@@ -1,4 +1,5 @@
 'use client';
+import { isArray } from 'lodash';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,10 +10,9 @@ import * as qk from '../lib/query-keys';
 import { CloseIcon } from './Icons';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 function buildRows(history) {
-  if (!Array.isArray(history) || history.length === 0) return [];
+  if (!isArray(history) || history.length === 0) return [];
   const reversed = [...history].reverse();
   return reversed.map((item, i) => {
     const prev = reversed[i + 1];
@@ -251,22 +251,15 @@ export default function FundHistoryNetValueModal({ open, onOpenChange, code, the
             <DrawerTitle className="flex items-center gap-2.5 text-left">
               <span>历史净值</span>
             </DrawerTitle>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DrawerClose
-                  className="icon-button border-none bg-transparent p-1"
-                  style={{
-                    borderColor: 'transparent',
-                    backgroundColor: 'transparent'
-                  }}
-                >
-                  <CloseIcon width="20" height="20" />
-                </DrawerClose>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>关闭</p>
-              </TooltipContent>
-            </Tooltip>
+            <DrawerClose
+              className="icon-button border-none bg-transparent p-1"
+              style={{
+                borderColor: 'transparent',
+                backgroundColor: 'transparent'
+              }}
+            >
+              <CloseIcon width="20" height="20" />
+            </DrawerClose>
           </DrawerHeader>
           <div className="flex-1 px-4 pb-4">{body}</div>
         </DrawerContent>

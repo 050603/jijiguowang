@@ -1,4 +1,5 @@
 'use client';
+import { isArray, isObject } from 'lodash';
 
 import { useState, useMemo } from 'react';
 import { Search, Info } from 'lucide-react';
@@ -6,7 +7,7 @@ import { CloseIcon, PlusIcon } from './Icons';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { getTagThemeBadgeProps } from './AddTagDialog';
-import { cn } from '@/lib/utils';
+import { cn, formatMoney } from '@/lib/utils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function AddFundToGroupModal({
@@ -97,7 +98,7 @@ export default function AddFundToGroupModal({
           </button>
         </div>
 
-        <Alert style={{ marginBottom: 16 }}>
+        <Alert style={{ marginBottom: 16 }} variant="info">
           <Info className="h-4 w-4" />
           <AlertDescription>
             在此添加的基金不会代入原有持仓金额。如需带金额迁移，请使用「分组迁移」功能。
@@ -158,10 +159,10 @@ export default function AddFundToGroupModal({
                     <div style={{ fontWeight: 600 }}>{fund.name}</div>
                     <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3 }}>
                       <span className="muted">#{fund.code}</span>
-                      {Array.isArray(fundTagListsByCode[fund.code]) && fundTagListsByCode[fund.code].length > 0 && (
+                      {isArray(fundTagListsByCode[fund.code]) && fundTagListsByCode[fund.code].length > 0 && (
                         <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 2 }}>
                           {fundTagListsByCode[fund.code].map((raw, idx) => {
-                            if (!raw || typeof raw !== 'object' || !raw.name) return null;
+                            if (!raw || !isObject(raw) || !raw.name) return null;
                             const name = String(raw.name).trim();
                             if (!name) return null;
                             // 优先取全局标签池中的最新主题，实例快照 theme 作为兜底
@@ -187,7 +188,7 @@ export default function AddFundToGroupModal({
                       <div className="muted" style={{ fontSize: '12px', marginTop: 2 }}>
                         持仓金额：
                         <span style={{ color: 'var(--foreground)', fontWeight: 500 }}>
-                          {getHoldingAmount(fund).toFixed(2)}
+                          {formatMoney(getHoldingAmount(fund))}
                         </span>
                       </div>
                     )}

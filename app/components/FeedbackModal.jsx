@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { QrCode } from 'lucide-react';
 import { CloseIcon, SettingsIcon } from './Icons';
 import { submitFeedback } from '../api/fund';
 
@@ -61,6 +62,21 @@ export default function FeedbackModal({ onClose, user, onOpenWeChat }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <SettingsIcon width="20" height="20" />
             <span>意见反馈</span>
+            <a
+              className="ocr-quota-badge"
+              style={{
+                cursor: 'pointer',
+                marginLeft: 8,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+              onClick={onOpenWeChat}
+            >
+              <QrCode size={14} />
+              加入微信用户支持群
+            </a>
           </div>
           <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
             <CloseIcon width="20" height="20" />
@@ -136,22 +152,6 @@ export default function FeedbackModal({ onClose, user, onOpenWeChat }) {
                   Issues
                 </a>
                 区留言互动
-              </p>
-              <p className="muted" style={{ fontSize: '12px', lineHeight: '1.6' }}>
-                或加入我们的
-                <a
-                  className="link-button"
-                  style={{
-                    color: 'var(--primary)',
-                    textDecoration: 'underline',
-                    padding: '0 4px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                  onClick={onOpenWeChat}
-                >
-                  微信用户交流群
-                </a>
               </p>
             </div>
           </form>

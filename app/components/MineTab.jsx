@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight, QrCode, Sparkles } from 'lucide-react';
 import { LoginIcon } from './Icons';
 
 export default function MineTab({
@@ -15,11 +15,12 @@ export default function MineTab({
   onUpdateLog,
   onFeedback,
   onSponsorSupport,
-  onAIAnalysis
+  onAIAnalysis,
+  onOpenWeChat
 }) {
   return (
     <div className="mine-tab" style={{ display: visible ? undefined : 'none' }} aria-hidden={!visible || undefined}>
-      <section className="mine-profile-card glass" aria-label="个人信息">
+      <section className="mine-profile-card glass" aria-label="个人信息" style={{ position: 'relative' }}>
         <div className="mine-profile-row">
           <div className="mine-profile-avatar">
             {user ? (
@@ -66,6 +67,23 @@ export default function MineTab({
             )}
           </div>
         </div>
+        <a
+          className="ocr-quota-badge"
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            right: 12,
+            cursor: 'pointer',
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+          onClick={onOpenWeChat}
+        >
+          <QrCode size={14} />
+          加入微信用户支持群
+        </a>
       </section>
 
       <ul className="mine-menu-list" role="list">

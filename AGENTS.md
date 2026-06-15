@@ -41,28 +41,28 @@ real-time-fund/
 
 ## WHERE TO LOOK
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Fund valuation logic | `app/api/fund.js` | JSONP to 天天基金, script injection to 腾讯财经 |
-| Main UI orchestration | `app/page.jsx` | Monolithic — all useState, business logic, rendering |
-| Modal rendering layer | `app/components/ModalsLayer.jsx` | All modal rendering extracted from page.jsx |
-| Fund card display | `app/components/FundCard.jsx` | Individual fund card with holdings |
-| Desktop table | `app/components/PcFundTable.jsx` | PC-specific table layout |
-| Mobile table | `app/components/MobileFundTable.jsx` | Mobile-specific layout, swipe actions |
-| Holding calculations | `app/page.jsx` (getHoldingProfit) | Profit/loss computation |
-| Cloud sync | `app/lib/supabase.js` + page.jsx sync functions | Supabase auth + data sync |
-| Trading/DCA | `app/components/TradeModal.jsx`, `DcaModal.jsx` | Buy/sell, dollar-cost averaging |
-| Fund fuzzy search | `app/hooks/useFundFuzzyMatcher.js` | Fuse.js based name/code matching |
-| OCR import | `app/page.jsx` (processFiles) | Tesseract.js + LLM parsing |
-| Valuation intraday chart | `app/lib/valuationTimeseries.js` | localStorage time-series |
-| Trading calendar | `app/lib/tradingCalendar.js` | Chinese holiday detection via CDN |
-| Request caching | TanStack Query (`app/lib/get-query-client.js`, `app/lib/query-keys.js`) | Dedup + staleTime/gcTime |
-| UI primitives | `components/ui/` | shadcn/ui — accordion, dialog, drawer, select, etc. |
-| Global styles | `app/globals.css` | CSS variables, glassmorphism, responsive |
-| CI/CD | `.github/workflows/nextjs.yml` | Build + deploy to GitHub Pages |
-| Docker | `Dockerfile`, `docker-compose.yml` | Multi-stage build with runtime env injection |
-| localStorage schema | `doc/localStorage 数据结构.md` | Full documentation of stored data shapes |
-| Supabase schema | `doc/supabase.sql` | Database tables for cloud sync |
+| Task                     | Location                                                                | Notes                                                |
+| ------------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------- |
+| Fund valuation logic     | `app/api/fund.js`                                                       | JSONP to 天天基金, script injection to 腾讯财经      |
+| Main UI orchestration    | `app/page.jsx`                                                          | Monolithic — all useState, business logic, rendering |
+| Modal rendering layer    | `app/components/ModalsLayer.jsx`                                        | All modal rendering extracted from page.jsx          |
+| Fund card display        | `app/components/FundCard.jsx`                                           | Individual fund card with holdings                   |
+| Desktop table            | `app/components/PcFundTable.jsx`                                        | PC-specific table layout                             |
+| Mobile table             | `app/components/MobileFundTable.jsx`                                    | Mobile-specific layout, swipe actions                |
+| Holding calculations     | `app/page.jsx` (getHoldingProfit)                                       | Profit/loss computation                              |
+| Cloud sync               | `app/lib/supabase.js` + page.jsx sync functions                         | Supabase auth + data sync                            |
+| Trading/DCA              | `app/components/TradeModal.jsx`, `DcaModal.jsx`                         | Buy/sell, dollar-cost averaging                      |
+| Fund fuzzy search        | `app/hooks/useFundFuzzyMatcher.js`                                      | Fuse.js based name/code matching                     |
+| OCR import               | `app/page.jsx` (processFiles)                                           | Tesseract.js + LLM parsing                           |
+| Valuation intraday chart | `app/lib/valuationTimeseries.js`                                        | localStorage time-series                             |
+| Trading calendar         | `app/lib/tradingCalendar.js`                                            | Chinese holiday detection via CDN                    |
+| Request caching          | TanStack Query (`app/lib/get-query-client.js`, `app/lib/query-keys.js`) | Dedup + staleTime/gcTime                             |
+| UI primitives            | `components/ui/`                                                        | shadcn/ui — accordion, dialog, drawer, select, etc.  |
+| Global styles            | `app/globals.css`                                                       | CSS variables, glassmorphism, responsive             |
+| CI/CD                    | `.github/workflows/nextjs.yml`                                          | Build + deploy to GitHub Pages                       |
+| Docker                   | `Dockerfile`, `docker-compose.yml`                                      | Multi-stage build with runtime env injection         |
+| localStorage schema      | `doc/localStorage 数据结构.md`                                          | Full documentation of stored data shapes             |
+| Supabase schema          | `doc/supabase.sql`                                                      | Database tables for cloud sync                       |
 
 ## CONVENTIONS
 
@@ -76,7 +76,7 @@ real-time-fund/
 - **Dual responsive layouts** — `PcFundTable` and `MobileFundTable` switch at 640px breakpoint.
 - **shadcn/ui conventions** — new-york style, CSS variables enabled, Lucide icons, path aliases (`@/components`, `@/lib/utils`).
 - **Linting only** — ESLint + lint-staged on pre-commit. No Prettier, no auto-formatting.
-- **Lodash for type checks** — 数据类型判断优先使用 lodash 方法（`isArray`, `isObject`, `isString`, `isNumber`, `isNil`, `isEqual` 等），而非原生 `Array.isArray`、`typeof` 等，保持项目一致性。
+- **Lodash for type checks** — 数据类型判断必须全部使用 lodash 方法（如 `isFunction`, `isObject`, `isString`, `isNumber`, `isBoolean`, `isArray`, `isNil`, `isEqual` 等），禁止使用原生 `Array.isArray` 和 `typeof` 判断数据类型（注意：检测全局环境对象如 `window`, `document`, `process`, `Intl`, `fetch` 等是否未定义时，为避免 ReferenceError 允许保留原生 `typeof === 'undefined'` 判断）。
 - **React Compiler** — `reactCompiler: true` in next.config.js (experimental auto-memoization).
 - **单位规范（px/rem）** — PC 端（`> 640px`）使用 `px`；全局（media query 外）的 `px` 由 `postcss-pxtorem`（`rootValue: 16`，`mediaQuery: false`）自动转换为 `rem`，PC 端 `html { font-size: 16px }` 保证 rem 与原 px 视觉完全一致。`@media (max-width: 640px)` 块**内**的 `px` 保留不转。移动端 `html { font-size: clamp(13px, 3.84vw, 16px) }` 让全局 rem 值随视口弹性缩放。`1px` 边框（`minPixelValue: 2`）保留为 px。如需阻止某个值被转换，使用大写 `PX` 书写。
 - **Modal 写法规范** — 所有弹框统一按以下规则组织：

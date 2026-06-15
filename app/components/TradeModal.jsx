@@ -5,15 +5,18 @@ import { AnimatePresence } from 'framer-motion';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import { isNumber } from 'lodash';
+import { isNumber, isUndefined } from 'lodash';
 import { fetchFundPingzhongdata, fetchSmartFundNetValue } from '../api/fund';
 import { DatePicker, NumericInput } from './Common';
 import ConfirmModal from './ConfirmModal';
 import { CloseIcon } from './Icons';
+import { AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import PendingTradesModal from './PendingTradesModal';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { formatMoney } from '@/lib/utils';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -47,8 +50,8 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
   const [calcShare, setCalcShare] = useState(null);
 
   const parseNumberish = (input) => {
-    if (input === null || typeof input === 'undefined') return null;
-    if (typeof input === 'number') return Number.isFinite(input) ? input : null;
+    if (input === null || isUndefined(input)) return null;
+    if (isNumber(input)) return Number.isFinite(input) ? input : null;
     const cleaned = String(input).replace(/[^\d.]/g, '');
     const n = parseFloat(cleaned);
     return Number.isFinite(n) ? n : null;
@@ -244,10 +247,20 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
         </div>
 
         {!showConfirm && currentPendingTrades.length > 0 && (
-          <div className="trade-pending-alert" onClick={() => setShowPendingList(true)}>
-            <span>⚠️ 当前有 {currentPendingTrades.length} 笔待处理交易</span>
-            <span style={{ textDecoration: 'underline' }}>查看详情 &gt;</span>
-          </div>
+          <Alert
+            variant="warning"
+            className="cursor-pointer"
+            style={{ marginBottom: 16 }}
+            onClick={() => setShowPendingList(true)}
+          >
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
+            >
+              <span>当前有 {currentPendingTrades.length} 笔待处理交易</span>
+              <span style={{ textDecoration: 'underline' }}>查看详情 &gt;</span>
+            </AlertDescription>
+          </Alert>
         )}
 
         {!showConfirm && (
@@ -271,7 +284,7 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                 </div>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="muted">买入金额</span>
-                  <span>{Number(amount).toFixed(2)}</span>
+                  <span>{formatMoney(amount)}</span>
                 </div>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="muted">买入费率</span>
@@ -327,10 +340,10 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                           持有市值 (估)
                         </div>
                         <div style={{ fontSize: '12px' }}>
-                          <span style={{ opacity: 0.7 }}>{(holding.share * Number(price)).toFixed(2)}</span>
+                          <span style={{ opacity: 0.7 }}>{formatMoney(holding.share * Number(price))}</span>
                           <span style={{ margin: '0 4px' }}>→</span>
                           <span style={{ fontWeight: 600 }}>
-                            {((holding.share + Number(calcShare)) * Number(price)).toFixed(2)}
+                            {formatMoney((holding.share + Number(calcShare)) * Number(price))}
                           </span>
                         </div>
                       </div>
@@ -380,7 +393,7 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                 </div>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="muted">预估手续费</span>
-                  <span>{price ? `${sellFee.toFixed(2)}` : '待计算'}</span>
+                  <span>{price ? `${formatMoney(sellFee)}` : '待计算'}</span>
                 </div>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="muted">卖出日期</span>
@@ -392,7 +405,7 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                 >
                   <span className="muted">预计回款</span>
                   <span style={{ color: 'var(--danger)', fontWeight: 700 }}>
-                    {loadingPrice ? '计算中...' : price ? `${estimatedReturn.toFixed(2)}` : '待计算'}
+                    {loadingPrice ? '计算中...' : price ? `${formatMoney(estimatedReturn)}` : '待计算'}
                   </span>
                 </div>
                 <div className="muted" style={{ fontSize: '12px', textAlign: 'right', marginTop: 4 }}>
@@ -424,10 +437,10 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                           持有市值 (估)
                         </div>
                         <div style={{ fontSize: '12px' }}>
-                          <span style={{ opacity: 0.7 }}>{(holding.share * sellPrice).toFixed(2)}</span>
+                          <span style={{ opacity: 0.7 }}>{formatMoney(holding.share * sellPrice)}</span>
                           <span style={{ margin: '0 4px' }}>→</span>
                           <span style={{ fontWeight: 600 }}>
-                            {((holding.share - sellShare) * sellPrice).toFixed(2)}
+                            {formatMoney((holding.share - sellShare) * sellPrice)}
                           </span>
                         </div>
                       </div>
@@ -494,7 +507,7 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                             borderRadius: 12
                           }}
                         >
-                          <NumericInput value={feeRate} onChange={setFeeRate} step={0.01} min={0} placeholder="0.12" />
+                          <NumericInput value={feeRate} onChange={setFeeRate} step={0.1} min={0} placeholder="0.12" />
                         </div>
                       </div>
                       <div className="form-group" style={{ flex: 1 }}>
@@ -643,7 +656,7 @@ export default function TradeModal({ type, fund, holding, onClose, onConfirm, pe
                       <NumericInput
                         value={feeValue}
                         onChange={setFeeValue}
-                        step={feeMode === 'rate' ? 0.01 : 1}
+                        step={feeMode === 'rate' ? 0.1 : 1}
                         min={0}
                         placeholder={feeMode === 'rate' ? '0.00' : '0.00'}
                       />

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { isEqual, isArray } from 'lodash';
+import { isArray, isBoolean, isEqual, isFunction, isObject, isString } from 'lodash';
 import { getFundCodesFromTagRecord } from '@/app/lib/fundHelpers';
 import { DEFAULT_SORT_RULES, SORT_DISPLAY_MODES } from '@/app/constants';
 
@@ -8,10 +8,10 @@ import { DEFAULT_SORT_RULES, SORT_DISPLAY_MODES } from '@/app/constants';
  */
 export const getFundCodesSignature = (value, extraFields = []) => {
   try {
-    const list = Array.isArray(value) ? value : JSON.parse(value || '[]');
-    if (!Array.isArray(list)) return '';
+    const list = isArray(value) ? value : JSON.parse(value || '[]');
+    if (!isArray(list)) return '';
     const fields = Array.from(
-      new Set(['jzrq', 'dwjz', 'dataSource', 'showImageChart', ...(Array.isArray(extraFields) ? extraFields : [])])
+      new Set(['jzrq', 'dwjz', 'dataSource', 'showImageChart', ...(isArray(extraFields) ? extraFields : [])])
     );
     const items = list
       .map((item) => {
@@ -31,8 +31,8 @@ export const getFundCodesSignature = (value, extraFields = []) => {
  */
 export const getTagsStoreSignature = (value) => {
   try {
-    const list = Array.isArray(value) ? value : JSON.parse(value || '[]');
-    if (!Array.isArray(list)) return '';
+    const list = isArray(value) ? value : JSON.parse(value || '[]');
+    if (!isArray(list)) return '';
     return list
       .map((r) => {
         const codes = getFundCodesFromTagRecord(r).sort().join(',');
@@ -55,6 +55,7 @@ const SYNC_KEYS = new Set([
   'groups',
   'collapsedCodes',
   'collapsedTrends',
+  'collapsedValuationTrends',
   'collapsedEarnings',
   'refreshMs',
   'holdings',
@@ -68,6 +69,34 @@ const SYNC_KEYS = new Set([
 ]);
 
 export { SORT_DISPLAY_MODES, DEFAULT_SORT_RULES };
+
+export const normalizePendingTrades = (value) => {
+  if (!isArray(value)) return [];
+  const seenIds = new Set();
+  const next = [];
+
+  for (const trade of value) {
+    if (!trade || !isObject(trade)) continue;
+    const id = trade.id == null ? '' : String(trade.id);
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    next.push(trade);
+  }
+
+  return next;
+};
+
+const normalizeStorageValue = (key, value) => {
+  if (key !== 'pendingTrades') return value;
+  try {
+    const parsed = isString(value) ? JSON.parse(value) : value;
+    return JSON.stringify(normalizePendingTrades(parsed));
+  } catch {
+    return value;
+  }
+};
 
 /**
  * 管理 localStorage 数据的 Zustand Store
@@ -84,6 +113,7 @@ export const useStorageStore = create((set, get) => ({
   favorites: new Set(),
   collapsedCodes: new Set(),
   collapsedTrends: new Set(),
+  collapsedValuationTrends: new Set(),
   collapsedEarnings: new Set(),
   refreshMs: 30000,
   holdings: {},
@@ -171,9 +201,9 @@ export const useStorageStore = create((set, get) => ({
   initFundDailyEarnings: () => {
     if (typeof window !== 'undefined') {
       const parsed = get().getItem('fundDailyEarnings', {});
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      if (parsed && isObject(parsed) && !isArray(parsed)) {
         const values = Object.values(parsed);
-        const hasScoped = values.some((v) => v && typeof v === 'object' && !Array.isArray(v));
+        const hasScoped = values.some((v) => v && isObject(v) && !isArray(v));
         if (!hasScoped && Object.keys(parsed).length > 0) {
           // 迁移旧版扁平格式为 { "all": 原对象 }
           set({ fundDailyEarnings: { all: parsed } });
@@ -194,11 +224,13 @@ export const useStorageStore = create((set, get) => ({
     if (typeof window !== 'undefined') {
       const cc = get().getItem('collapsedCodes', []);
       const ct = get().getItem('collapsedTrends', []);
+      const cvt = get().getItem('collapsedValuationTrends', []);
       const ce = get().getItem('collapsedEarnings', []);
       set({
-        collapsedCodes: new Set(Array.isArray(cc) ? cc : []),
-        collapsedTrends: new Set(Array.isArray(ct) ? ct : []),
-        collapsedEarnings: new Set(Array.isArray(ce) ? ce : [])
+        collapsedCodes: new Set(isArray(cc) ? cc : []),
+        collapsedTrends: new Set(isArray(ct) ? ct : []),
+        collapsedValuationTrends: new Set(isArray(cvt) ? cvt : []),
+        collapsedEarnings: new Set(isArray(ce) ? ce : [])
       });
     }
   },
@@ -219,23 +251,17 @@ export const useStorageStore = create((set, get) => ({
     // 从 customSettings 读取排序规则和展示模式
     try {
       const settings = get().getItem('customSettings', {});
-      if (settings && typeof settings === 'object') {
+      if (settings && isObject(settings)) {
         // 展示模式：优先读取按端口分别存储的字段，向后兼容旧版单一字段
-        if (
-          typeof settings.localSortDisplayMode === 'string' &&
-          SORT_DISPLAY_MODES.has(settings.localSortDisplayMode)
-        ) {
+        if (isString(settings.localSortDisplayMode) && SORT_DISPLAY_MODES.has(settings.localSortDisplayMode)) {
           nextState.pcSortDisplayMode = settings.localSortDisplayMode;
           nextState.mobileSortDisplayMode = settings.localSortDisplayMode;
         } else {
-          if (
-            typeof settings.pcLocalSortDisplayMode === 'string' &&
-            SORT_DISPLAY_MODES.has(settings.pcLocalSortDisplayMode)
-          ) {
+          if (isString(settings.pcLocalSortDisplayMode) && SORT_DISPLAY_MODES.has(settings.pcLocalSortDisplayMode)) {
             nextState.pcSortDisplayMode = settings.pcLocalSortDisplayMode;
           }
           if (
-            typeof settings.mobileLocalSortDisplayMode === 'string' &&
+            isString(settings.mobileLocalSortDisplayMode) &&
             SORT_DISPLAY_MODES.has(settings.mobileLocalSortDisplayMode)
           ) {
             nextState.mobileSortDisplayMode = settings.mobileLocalSortDisplayMode;
@@ -244,12 +270,12 @@ export const useStorageStore = create((set, get) => ({
 
         // 排序规则：优先从 customSettings.localSortRules 读取，兼容旧版独立 localSortRules 字段
         let rulesFromSettings = null;
-        if (Array.isArray(settings.localSortRules)) {
+        if (isArray(settings.localSortRules)) {
           rulesFromSettings = settings.localSortRules;
         }
         if (!rulesFromSettings) {
           const legacyRules = get().getItem('localSortRules');
-          if (Array.isArray(legacyRules)) rulesFromSettings = legacyRules;
+          if (isArray(legacyRules)) rulesFromSettings = legacyRules;
         }
 
         if (rulesFromSettings && rulesFromSettings.length) {
@@ -260,8 +286,8 @@ export const useStorageStore = create((set, get) => ({
             if (!base) continue;
             merged.push({
               ...base,
-              enabled: typeof stored.enabled === 'boolean' ? stored.enabled : base.enabled,
-              alias: typeof stored.alias === 'string' && stored.alias.trim() ? stored.alias.trim() : base.alias
+              enabled: isBoolean(stored.enabled) ? stored.enabled : base.enabled,
+              alias: isString(stored.alias) && stored.alias.trim() ? stored.alias.trim() : base.alias
             });
           }
           // 追加新版本新增但本地未记录的规则
@@ -279,37 +305,43 @@ export const useStorageStore = create((set, get) => ({
   },
 
   setFunds: (nextFunds) => {
-    const next = typeof nextFunds === 'function' ? nextFunds(get().funds) : nextFunds;
+    const next = isFunction(nextFunds) ? nextFunds(get().funds) : nextFunds;
     set({ funds: next });
     get().setItem('funds', JSON.stringify(next));
   },
 
   setGroups: (nextGroups) => {
-    const next = typeof nextGroups === 'function' ? nextGroups(get().groups) : nextGroups;
+    const next = isFunction(nextGroups) ? nextGroups(get().groups) : nextGroups;
     set({ groups: next });
     get().setItem('groups', JSON.stringify(next));
   },
 
   setFavorites: (nextFavs) => {
-    const next = typeof nextFavs === 'function' ? nextFavs(get().favorites) : nextFavs;
+    const next = isFunction(nextFavs) ? nextFavs(get().favorites) : nextFavs;
     set({ favorites: next });
     get().setItem('favorites', JSON.stringify(Array.from(next)));
   },
 
   setCollapsedCodes: (nextVal) => {
-    const next = typeof nextVal === 'function' ? nextVal(get().collapsedCodes) : nextVal;
+    const next = isFunction(nextVal) ? nextVal(get().collapsedCodes) : nextVal;
     set({ collapsedCodes: next });
     get().setItem('collapsedCodes', JSON.stringify(Array.from(next)));
   },
 
   setCollapsedTrends: (nextVal) => {
-    const next = typeof nextVal === 'function' ? nextVal(get().collapsedTrends) : nextVal;
+    const next = isFunction(nextVal) ? nextVal(get().collapsedTrends) : nextVal;
     set({ collapsedTrends: next });
     get().setItem('collapsedTrends', JSON.stringify(Array.from(next)));
   },
 
+  setCollapsedValuationTrends: (nextVal) => {
+    const next = isFunction(nextVal) ? nextVal(get().collapsedValuationTrends) : nextVal;
+    set({ collapsedValuationTrends: next });
+    get().setItem('collapsedValuationTrends', JSON.stringify(Array.from(next)));
+  },
+
   setCollapsedEarnings: (nextVal) => {
-    const next = typeof nextVal === 'function' ? nextVal(get().collapsedEarnings) : nextVal;
+    const next = isFunction(nextVal) ? nextVal(get().collapsedEarnings) : nextVal;
     set({ collapsedEarnings: next });
     get().setItem('collapsedEarnings', JSON.stringify(Array.from(next)));
   },
@@ -320,68 +352,69 @@ export const useStorageStore = create((set, get) => ({
   },
 
   setHoldings: (nextHoldings) => {
-    const next = typeof nextHoldings === 'function' ? nextHoldings(get().holdings) : nextHoldings;
+    const next = isFunction(nextHoldings) ? nextHoldings(get().holdings) : nextHoldings;
     set({ holdings: next });
     get().setItem('holdings', JSON.stringify(next));
   },
 
   setGroupHoldings: (nextGroupHoldings) => {
-    const next = typeof nextGroupHoldings === 'function' ? nextGroupHoldings(get().groupHoldings) : nextGroupHoldings;
+    const next = isFunction(nextGroupHoldings) ? nextGroupHoldings(get().groupHoldings) : nextGroupHoldings;
     set({ groupHoldings: next });
     get().setItem('groupHoldings', JSON.stringify(next));
   },
 
   setPendingTrades: (nextPendingTrades) => {
-    const next = typeof nextPendingTrades === 'function' ? nextPendingTrades(get().pendingTrades) : nextPendingTrades;
+    const next = normalizePendingTrades(
+      isFunction(nextPendingTrades) ? nextPendingTrades(get().pendingTrades) : nextPendingTrades
+    );
     set({ pendingTrades: next });
     get().setItem('pendingTrades', JSON.stringify(next));
   },
 
   setTransactions: (nextTransactions) => {
-    const next = typeof nextTransactions === 'function' ? nextTransactions(get().transactions) : nextTransactions;
+    const next = isFunction(nextTransactions) ? nextTransactions(get().transactions) : nextTransactions;
     set({ transactions: next });
     get().setItem('transactions', JSON.stringify(next));
   },
 
   setDcaPlans: (nextDcaPlans) => {
-    const next = typeof nextDcaPlans === 'function' ? nextDcaPlans(get().dcaPlans) : nextDcaPlans;
+    const next = isFunction(nextDcaPlans) ? nextDcaPlans(get().dcaPlans) : nextDcaPlans;
     set({ dcaPlans: next });
     get().setItem('dcaPlans', JSON.stringify(next));
   },
 
   setCustomSettings: (nextCustomSettings) => {
-    const next =
-      typeof nextCustomSettings === 'function' ? nextCustomSettings(get().customSettings) : nextCustomSettings;
+    const next = isFunction(nextCustomSettings) ? nextCustomSettings(get().customSettings) : nextCustomSettings;
     set({ customSettings: next });
     get().setItem('customSettings', JSON.stringify(next));
   },
 
   setSortBy: (nextSortBy) => {
-    const val = typeof nextSortBy === 'function' ? nextSortBy(get().sortBy) : nextSortBy;
+    const val = isFunction(nextSortBy) ? nextSortBy(get().sortBy) : nextSortBy;
     set({ sortBy: val });
     get().setItem('localSortBy', val);
   },
 
   setSortOrder: (nextSortOrder) => {
-    const val = typeof nextSortOrder === 'function' ? nextSortOrder(get().sortOrder) : nextSortOrder;
+    const val = isFunction(nextSortOrder) ? nextSortOrder(get().sortOrder) : nextSortOrder;
     set({ sortOrder: val });
     get().setItem('localSortOrder', val);
   },
 
   setPcSortDisplayMode: (nextMode) => {
-    const val = typeof nextMode === 'function' ? nextMode(get().pcSortDisplayMode) : nextMode;
+    const val = isFunction(nextMode) ? nextMode(get().pcSortDisplayMode) : nextMode;
     set({ pcSortDisplayMode: val });
     get()._persistSortSettings({ pcSortDisplayMode: val });
   },
 
   setMobileSortDisplayMode: (nextMode) => {
-    const val = typeof nextMode === 'function' ? nextMode(get().mobileSortDisplayMode) : nextMode;
+    const val = isFunction(nextMode) ? nextMode(get().mobileSortDisplayMode) : nextMode;
     set({ mobileSortDisplayMode: val });
     get()._persistSortSettings({ mobileSortDisplayMode: val });
   },
 
   setSortRules: (nextRules) => {
-    const val = typeof nextRules === 'function' ? nextRules(get().sortRules) : nextRules;
+    const val = isFunction(nextRules) ? nextRules(get().sortRules) : nextRules;
     set({ sortRules: val });
     get()._persistSortSettings({ sortRules: val });
   },
@@ -411,23 +444,21 @@ export const useStorageStore = create((set, get) => ({
   },
 
   setFundDailyEarnings: (nextFundDailyEarnings) => {
-    const next =
-      typeof nextFundDailyEarnings === 'function'
-        ? nextFundDailyEarnings(get().fundDailyEarnings)
-        : nextFundDailyEarnings;
+    const next = isFunction(nextFundDailyEarnings)
+      ? nextFundDailyEarnings(get().fundDailyEarnings)
+      : nextFundDailyEarnings;
     set({ fundDailyEarnings: next });
     get().setItem('fundDailyEarnings', JSON.stringify(next));
   },
 
   setFundDividends: (nextFundDividends) => {
-    const next = typeof nextFundDividends === 'function' ? nextFundDividends(get().fundDividends) : nextFundDividends;
+    const next = isFunction(nextFundDividends) ? nextFundDividends(get().fundDividends) : nextFundDividends;
     set({ fundDividends: next });
     get().setItem('fundDividends', JSON.stringify(next));
   },
 
   setValuationSeries: (nextValuationSeries) => {
-    const next =
-      typeof nextValuationSeries === 'function' ? nextValuationSeries(get().valuationSeries) : nextValuationSeries;
+    const next = isFunction(nextValuationSeries) ? nextValuationSeries(get().valuationSeries) : nextValuationSeries;
     set({ valuationSeries: next });
   },
 
@@ -437,33 +468,36 @@ export const useStorageStore = create((set, get) => ({
    * @param {string} value JSON 字符串或普通字符串
    */
   setItem: (key, value) => {
+    const normalizedValue = normalizeStorageValue(key, value);
     const prevValue = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    let skipStorageWrite = false;
 
     // 检查内容是否真的发生了变化 (使用 lodash isEqual 进行深对比)
     if (prevValue !== null) {
       try {
-        const parsedNew = JSON.parse(value);
+        const parsedNew = JSON.parse(normalizedValue);
         const parsedOld = JSON.parse(prevValue);
-        if (isEqual(parsedNew, parsedOld)) return;
+        if (isEqual(parsedNew, parsedOld)) skipStorageWrite = true;
       } catch (e) {
         // 非 JSON 或解析失败时使用字符串直接对比
-        if (prevValue === value) return;
+        if (prevValue === normalizedValue) skipStorageWrite = true;
       }
     }
 
     // 更新本地存储
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(key, value);
+    if (!skipStorageWrite && typeof window !== 'undefined') {
+      window.localStorage.setItem(key, normalizedValue);
     }
 
     // 同步更新 Store 状态，确保 UI 响应
     try {
-      const parsed = JSON.parse(value);
+      const parsed = JSON.parse(normalizedValue);
       if (key === 'funds') set({ funds: parsed });
       else if (key === 'groups') set({ groups: parsed });
       else if (key === 'favorites') set({ favorites: new Set(parsed) });
       else if (key === 'collapsedCodes') set({ collapsedCodes: new Set(parsed) });
       else if (key === 'collapsedTrends') set({ collapsedTrends: new Set(parsed) });
+      else if (key === 'collapsedValuationTrends') set({ collapsedValuationTrends: new Set(parsed) });
       else if (key === 'collapsedEarnings') set({ collapsedEarnings: new Set(parsed) });
       else if (key === 'refreshMs') set({ refreshMs: Number(parsed) });
       else if (key === 'holdings') set({ holdings: parsed });
@@ -478,10 +512,12 @@ export const useStorageStore = create((set, get) => ({
       else if (key === 'localSortOrder') set({ sortOrder: parsed });
     } catch (e) {
       // 如果不是 JSON，或者是 refreshMs 这种数字字符串
-      if (key === 'refreshMs') set({ refreshMs: Number(value) });
-      else if (key === 'localSortBy') set({ sortBy: value });
-      else if (key === 'localSortOrder') set({ sortOrder: value });
+      if (key === 'refreshMs') set({ refreshMs: Number(normalizedValue) });
+      else if (key === 'localSortBy') set({ sortBy: normalizedValue });
+      else if (key === 'localSortOrder') set({ sortOrder: normalizedValue });
     }
+
+    if (skipStorageWrite) return;
 
     // 触发同步逻辑
     const { onSync } = get();
@@ -490,17 +526,17 @@ export const useStorageStore = create((set, get) => ({
       // 注意：isEqual 已经过滤了完全一致的情况，这里依然保留签名判断
       // 是为了过滤“实质性”无变化的更新（如 jzrq, dwjz 没变，但其他非核心字段变了）
       if (key === 'funds') {
-        if (getFundCodesSignature(prevValue) === getFundCodesSignature(value)) {
+        if (getFundCodesSignature(prevValue) === getFundCodesSignature(normalizedValue)) {
           return;
         }
       }
       if (key === 'tags') {
-        if (getTagsStoreSignature(prevValue) === getTagsStoreSignature(value)) {
+        if (getTagsStoreSignature(prevValue) === getTagsStoreSignature(normalizedValue)) {
           return;
         }
       }
 
-      onSync(key, prevValue, value);
+      onSync(key, prevValue, normalizedValue);
     }
   },
 

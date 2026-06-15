@@ -1,6 +1,6 @@
 {
   "name": "real-time-fund",
-  "version": "2.0.1",
+  "version": "2.2.1",
   "private": true,
   "scripts": {
     "dev": "NO_PROXY=\"dashscope.aliyuncs.com,localhost,127.0.0.1\" next dev",

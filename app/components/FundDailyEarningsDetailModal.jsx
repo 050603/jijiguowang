@@ -1,4 +1,5 @@
 'use client';
+import { isArray, isNumber } from 'lodash';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,10 +7,10 @@ import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-tabl
 import { CloseIcon } from './Icons';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { formatMoney } from '@/lib/utils';
 
 function buildTableRows(series) {
-  if (!Array.isArray(series) || series.length === 0) return [];
+  if (!isArray(series) || series.length === 0) return [];
   return [...series].reverse();
 }
 
@@ -43,7 +44,7 @@ export default function FundDailyEarningsDetailModal({
         header: '收益',
         cell: (info) => {
           const v = info.getValue();
-          const isValid = typeof v === 'number' && Number.isFinite(v);
+          const isValid = isNumber(v) && Number.isFinite(v);
           if (masked) return '***';
           if (!isValid) return '—';
           const sign = v > 0 ? '+' : v < 0 ? '-' : '';
@@ -51,7 +52,7 @@ export default function FundDailyEarningsDetailModal({
           return (
             <span className={cls}>
               {sign}
-              {Math.abs(v).toFixed(2)}
+              {formatMoney(Math.abs(v))}
             </span>
           );
         },
@@ -244,22 +245,15 @@ export default function FundDailyEarningsDetailModal({
             <DrawerTitle className="flex items-center gap-2.5 text-left">
               <span>{title}</span>
             </DrawerTitle>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DrawerClose
-                  className="icon-button border-none bg-transparent p-1"
-                  style={{
-                    borderColor: 'transparent',
-                    backgroundColor: 'transparent'
-                  }}
-                >
-                  <CloseIcon width="20" height="20" />
-                </DrawerClose>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>关闭</p>
-              </TooltipContent>
-            </Tooltip>
+            <DrawerClose
+              className="icon-button border-none bg-transparent p-1"
+              style={{
+                borderColor: 'transparent',
+                backgroundColor: 'transparent'
+              }}
+            >
+              <CloseIcon width="20" height="20" />
+            </DrawerClose>
           </DrawerHeader>
           <div className="flex-1 px-4 pb-4">{body}</div>
         </DrawerContent>

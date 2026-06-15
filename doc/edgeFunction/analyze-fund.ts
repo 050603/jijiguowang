@@ -7,6 +7,10 @@ console.info('server started');
 const AINX_API_KEY = Deno.env.get('AINX_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// 每日 OCR 识别上限
+const MAX_DAILY_OCR = 5;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,6 +94,29 @@ Deno.serve(async (req: Request) => {
     }
 
     console.info('当前用户:', user.id);
+
+    // ✅ 3.5 每日 OCR 用量限流检查（原子操作）
+    const { data: usageResult, error: usageError } = await supabase.rpc('check_and_increment_ocr_usage', {
+      p_max_limit: MAX_DAILY_OCR
+    });
+
+    if (usageError) {
+      console.error('OCR 用量检查失败:', usageError);
+      // 限流检查失败不阻断请求，记录日志后继续
+    } else if (usageResult && !usageResult.allowed) {
+      const currentCount = usageResult.current_count || MAX_DAILY_OCR;
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'DAILY_LIMIT_EXCEEDED',
+          message: `每日 OCR 识别次数已达上限（${MAX_DAILY_OCR} 次），请明天再试`,
+          remaining: 0,
+          current_count: currentCount,
+          max_limit: MAX_DAILY_OCR
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const rawText = body?.text || '';
@@ -233,12 +260,14 @@ Deno.serve(async (req: Request) => {
       holdGains: String(item?.holdGains || '')
     }));
 
-    // ✅ 6. 成功响应
+    // ✅ 6. 成功响应（附带剩余用量信息）
+    const remaining = usageResult ? Math.max(0, MAX_DAILY_OCR - (usageResult.current_count || 0)) : null;
     return new Response(
       JSON.stringify({
         success: true,
         data: safeData,
-        userId: user.id
+        userId: user.id,
+        remaining
       }),
       {
         status: 200,

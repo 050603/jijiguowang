@@ -15,7 +15,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
-import { isNumber, isString, isPlainObject, isArray } from 'lodash';
+import { isArray, isBoolean, isFunction, isNumber, isObject, isPlainObject, isString } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 import { toast as sonnerToast } from 'sonner';
 
@@ -68,8 +68,8 @@ import {
   setAuthUser,
   useStorageStore,
   storageStore,
+  normalizePendingTrades,
   useModalStore,
-  useIsAnyModalOpen,
   useSettingsStore
 } from './stores';
 import ModalsLayer from './components/ModalsLayer';
@@ -101,11 +101,13 @@ import {
   serializeTagRecordsForCompare,
   cloneHoldingDeep,
   seedGroupHoldingsFromGlobal,
-  migrateDcaPlansToScoped
+  migrateDcaPlansToScoped,
+  isNavUpdated
 } from './lib/fundHelpers';
 
 import { dedupeByCode, normalizeCode, cleanCodeArray } from './lib/normalize';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { formatMoney } from '@/lib/utils';
 
 export default function HomePage() {
   const {
@@ -122,6 +124,8 @@ export default function HomePage() {
     setCollapsedCodes,
     collapsedTrends,
     setCollapsedTrends,
+    collapsedValuationTrends,
+    setCollapsedValuationTrends,
     collapsedEarnings,
     setCollapsedEarnings,
     refreshMs,
@@ -174,7 +178,7 @@ export default function HomePage() {
     const out = {};
     const codeSet = new Set((isArray(funds) ? funds : []).map((f) => String(f?.code ?? '').trim()).filter(Boolean));
     for (const r of fundTagRecords || []) {
-      if (!r || typeof r !== 'object') continue;
+      if (!r || !isObject(r)) continue;
       const id = String(r.id ?? '').trim();
       const name = String(r.name ?? '').trim();
       if (!id || !name) continue;
@@ -307,52 +311,45 @@ export default function HomePage() {
   // ---- Modal store setter compatibility wrappers ----
   const _ms = useModalStore.setState;
   const _gs = useModalStore.getState;
-  const setSettingsOpen = (v) => _ms({ settingsOpen: typeof v === 'function' ? v(_gs().settingsOpen) : v });
-  const setGroupModalOpen = (v) => _ms({ groupModalOpen: typeof v === 'function' ? v(_gs().groupModalOpen) : v });
-  const setGroupManageOpen = (v) => _ms({ groupManageOpen: typeof v === 'function' ? v(_gs().groupManageOpen) : v });
-  const setAddFundToGroupOpen = (v) =>
-    _ms({ addFundToGroupOpen: typeof v === 'function' ? v(_gs().addFundToGroupOpen) : v });
-  const setSortSettingOpen = (v) => _ms({ sortSettingOpen: typeof v === 'function' ? v(_gs().sortSettingOpen) : v });
-  const setLoginModalOpen = (v) => _ms({ loginModalOpen: typeof v === 'function' ? v(_gs().loginModalOpen) : v });
-  const setLoginInitialError = (v) =>
-    _ms({ loginInitialError: typeof v === 'function' ? v(_gs().loginInitialError) : v });
-  const setFeedbackOpen = (v) => _ms({ feedbackOpen: typeof v === 'function' ? v(_gs().feedbackOpen) : v });
-  const setFeedbackNonce = (v) => _ms({ feedbackNonce: typeof v === 'function' ? v(_gs().feedbackNonce) : v });
-  const setDonateOpen = (v) => _ms({ donateOpen: typeof v === 'function' ? v(_gs().donateOpen) : v });
-  const setIsLogoutConfirmOpen = (v) =>
-    _ms({ isLogoutConfirmOpen: typeof v === 'function' ? v(_gs().isLogoutConfirmOpen) : v });
+  const setSettingsOpen = (v) => _ms({ settingsOpen: isFunction(v) ? v(_gs().settingsOpen) : v });
+  const setGroupModalOpen = (v) => _ms({ groupModalOpen: isFunction(v) ? v(_gs().groupModalOpen) : v });
+  const setGroupManageOpen = (v) => _ms({ groupManageOpen: isFunction(v) ? v(_gs().groupManageOpen) : v });
+  const setAddFundToGroupOpen = (v) => _ms({ addFundToGroupOpen: isFunction(v) ? v(_gs().addFundToGroupOpen) : v });
+  const setSortSettingOpen = (v) => _ms({ sortSettingOpen: isFunction(v) ? v(_gs().sortSettingOpen) : v });
+  const setLoginModalOpen = (v) => _ms({ loginModalOpen: isFunction(v) ? v(_gs().loginModalOpen) : v });
+  const setLoginInitialError = (v) => _ms({ loginInitialError: isFunction(v) ? v(_gs().loginInitialError) : v });
+  const setFeedbackOpen = (v) => _ms({ feedbackOpen: isFunction(v) ? v(_gs().feedbackOpen) : v });
+  const setFeedbackNonce = (v) => _ms({ feedbackNonce: isFunction(v) ? v(_gs().feedbackNonce) : v });
+  const setDonateOpen = (v) => _ms({ donateOpen: isFunction(v) ? v(_gs().donateOpen) : v });
+  const setIsLogoutConfirmOpen = (v) => _ms({ isLogoutConfirmOpen: isFunction(v) ? v(_gs().isLogoutConfirmOpen) : v });
   const setPortfolioEarningsOpen = (v) =>
-    _ms({ portfolioEarningsOpen: typeof v === 'function' ? v(_gs().portfolioEarningsOpen) : v });
+    _ms({ portfolioEarningsOpen: isFunction(v) ? v(_gs().portfolioEarningsOpen) : v });
   const setMobileFundDrawerOpen = (v) =>
-    _ms({ mobileFundDrawerOpen: typeof v === 'function' ? v(_gs().mobileFundDrawerOpen) : v });
-  const setTutorialDrawerOpen = (v) =>
-    _ms({ tutorialDrawerOpen: typeof v === 'function' ? v(_gs().tutorialDrawerOpen) : v });
-  const setUpdateLogOpen = (v) => _ms({ updateLogOpen: typeof v === 'function' ? v(_gs().updateLogOpen) : v });
+    _ms({ mobileFundDrawerOpen: isFunction(v) ? v(_gs().mobileFundDrawerOpen) : v });
+  const setTutorialDrawerOpen = (v) => _ms({ tutorialDrawerOpen: isFunction(v) ? v(_gs().tutorialDrawerOpen) : v });
+  const setUpdateLogOpen = (v) => _ms({ updateLogOpen: isFunction(v) ? v(_gs().updateLogOpen) : v });
   const setMobileTableSettingModalOpen = (v) =>
-    _ms({ mobileTableSettingModalOpen: typeof v === 'function' ? v(_gs().mobileTableSettingModalOpen) : v });
-  const setIsUpdateModalOpen = (v) =>
-    _ms({ isUpdateModalOpen: typeof v === 'function' ? v(_gs().isUpdateModalOpen) : v });
-  const setHoldingModal = (v) => _ms({ holdingModal: typeof v === 'function' ? v(_gs().holdingModal) : v });
-  const setActionModal = (v) => _ms({ actionModal: typeof v === 'function' ? v(_gs().actionModal) : v });
-  const setTradeModal = (v) => _ms({ tradeModal: typeof v === 'function' ? v(_gs().tradeModal) : v });
-  const setConvertModal = (v) => _ms({ convertModal: typeof v === 'function' ? v(_gs().convertModal) : v });
-  const setDividendMethodModal = (v) =>
-    _ms({ dividendMethodModal: typeof v === 'function' ? v(_gs().dividendMethodModal) : v });
+    _ms({ mobileTableSettingModalOpen: isFunction(v) ? v(_gs().mobileTableSettingModalOpen) : v });
+  const setIsUpdateModalOpen = (v) => _ms({ isUpdateModalOpen: isFunction(v) ? v(_gs().isUpdateModalOpen) : v });
+  const setHoldingModal = (v) => _ms({ holdingModal: isFunction(v) ? v(_gs().holdingModal) : v });
+  const setActionModal = (v) => _ms({ actionModal: isFunction(v) ? v(_gs().actionModal) : v });
+  const setTradeModal = (v) => _ms({ tradeModal: isFunction(v) ? v(_gs().tradeModal) : v });
+  const setConvertModal = (v) => _ms({ convertModal: isFunction(v) ? v(_gs().convertModal) : v });
+  const setDividendMethodModal = (v) => _ms({ dividendMethodModal: isFunction(v) ? v(_gs().dividendMethodModal) : v });
   const setSelectHoldingGroupModal = (v) =>
-    _ms({ selectHoldingGroupModal: typeof v === 'function' ? v(_gs().selectHoldingGroupModal) : v });
-  const setDataSourceModal = (v) => _ms({ dataSourceModal: typeof v === 'function' ? v(_gs().dataSourceModal) : v });
-  const setDcaModal = (v) => _ms({ dcaModal: typeof v === 'function' ? v(_gs().dcaModal) : v });
-  const setClearConfirm = (v) => _ms({ clearConfirm: typeof v === 'function' ? v(_gs().clearConfirm) : v });
+    _ms({ selectHoldingGroupModal: isFunction(v) ? v(_gs().selectHoldingGroupModal) : v });
+  const setDataSourceModal = (v) => _ms({ dataSourceModal: isFunction(v) ? v(_gs().dataSourceModal) : v });
+  const setDcaModal = (v) => _ms({ dcaModal: isFunction(v) ? v(_gs().dcaModal) : v });
+  const setClearConfirm = (v) => _ms({ clearConfirm: isFunction(v) ? v(_gs().clearConfirm) : v });
   const setHoldingMigrateDialog = (v) =>
-    _ms({ holdingMigrateDialog: typeof v === 'function' ? v(_gs().holdingMigrateDialog) : v });
-  const setHistoryModal = (v) => _ms({ historyModal: typeof v === 'function' ? v(_gs().historyModal) : v });
-  const setAddHistoryModal = (v) => _ms({ addHistoryModal: typeof v === 'function' ? v(_gs().addHistoryModal) : v });
-  const setFundDeleteConfirm = (v) =>
-    _ms({ fundDeleteConfirm: typeof v === 'function' ? v(_gs().fundDeleteConfirm) : v });
+    _ms({ holdingMigrateDialog: isFunction(v) ? v(_gs().holdingMigrateDialog) : v });
+  const setHistoryModal = (v) => _ms({ historyModal: isFunction(v) ? v(_gs().historyModal) : v });
+  const setAddHistoryModal = (v) => _ms({ addHistoryModal: isFunction(v) ? v(_gs().addHistoryModal) : v });
+  const setFundDeleteConfirm = (v) => _ms({ fundDeleteConfirm: isFunction(v) ? v(_gs().fundDeleteConfirm) : v });
   const setFundDeleteBulkConfirm = (v) =>
-    _ms({ fundDeleteBulkConfirm: typeof v === 'function' ? v(_gs().fundDeleteBulkConfirm) : v });
-  const setFundTagsEdit = (v) => _ms({ fundTagsEdit: typeof v === 'function' ? v(_gs().fundTagsEdit) : v });
-  const setSuccessModal = (v) => _ms({ successModal: typeof v === 'function' ? v(_gs().successModal) : v });
+    _ms({ fundDeleteBulkConfirm: isFunction(v) ? v(_gs().fundDeleteBulkConfirm) : v });
+  const setFundTagsEdit = (v) => _ms({ fundTagsEdit: isFunction(v) ? v(_gs().fundTagsEdit) : v });
+  const setSuccessModal = (v) => _ms({ successModal: isFunction(v) ? v(_gs().successModal) : v });
 
   const fundDetailDrawerCloseRef = useRef(null); // 由 MobileFundTable 注入，用于确认删除时关闭基金详情 Drawer
   const fundDetailDialogCloseRef = useRef(null); // 由 PcFundTable 注入，用于确认删除时关闭基金详情 Dialog
@@ -540,7 +537,7 @@ export default function HomePage() {
         const scopeKey = source === SUMMARY_SOURCE_GLOBAL ? DAILY_EARNINGS_SCOPE_ALL : source;
         const bucket = getScopeBucket(scopeKey);
         const list = bucket[code];
-        if (Array.isArray(list) && list.length > 0) out[code] = list;
+        if (isArray(list) && list.length > 0) out[code] = list;
       });
       return out;
     }
@@ -560,7 +557,7 @@ export default function HomePage() {
     const groupIdsByCode = linkedHoldingsForAllFav?.groupIdsByCode || {};
 
     for (const code of linkedCodes) {
-      const groupIds = Array.isArray(groupIdsByCode[code]) ? groupIdsByCode[code] : [];
+      const groupIds = isArray(groupIdsByCode[code]) ? groupIdsByCode[code] : [];
       if (groupIds.length === 0) continue;
 
       let fallbackPrincipalCurrent = 0;
@@ -578,7 +575,7 @@ export default function HomePage() {
       for (const gid of groupIds) {
         const bucket = getScopeBucket(gid);
         const list = bucket[code];
-        if (!Array.isArray(list) || list.length === 0) continue;
+        if (!isArray(list) || list.length === 0) continue;
 
         for (const item of list) {
           const date = item?.date ? String(item.date) : '';
@@ -636,19 +633,31 @@ export default function HomePage() {
     Object.values(fundDailyEarnings).forEach((bucket) => {
       if (!isPlainObject(bucket)) return;
       Object.values(bucket).forEach((list) => {
-        if (!Array.isArray(list) || list.length === 0) return;
+        if (!isArray(list) || list.length === 0) return;
         list.forEach((item) => {
           const date = item?.date ? String(item.date) : '';
           const earnings = Number(item?.earnings);
+          const baseCostAmount = Number(item?.baseCostAmount);
           if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
           if (!Number.isFinite(earnings)) return;
-          byDate.set(date, (byDate.get(date) ?? 0) + earnings);
+
+          const prev = byDate.get(date) || { earnings: 0, baseCostAmount: 0 };
+          prev.earnings += earnings;
+          if (Number.isFinite(baseCostAmount) && baseCostAmount > 0) {
+            prev.baseCostAmount += baseCostAmount;
+          }
+          byDate.set(date, prev);
         });
       });
     });
     return [...byDate.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, earnings]) => ({ date, earnings, rate: null }));
+      .map(([date, data]) => ({
+        date,
+        earnings: data.earnings,
+        baseCostAmount: data.baseCostAmount > 0 ? data.baseCostAmount : null,
+        rate: null
+      }));
   }, [fundDailyEarnings]);
 
   const holdingsForTabWithLinked = useMemo(() => {
@@ -671,7 +680,7 @@ export default function HomePage() {
     if (!activeGroupId) return transactions;
     const out = {};
     Object.entries(transactions || {}).forEach(([code, list]) => {
-      if (!Array.isArray(list)) return;
+      if (!isArray(list)) return;
       const filtered = list.filter((t) => t.groupId === activeGroupId);
       if (filtered.length) out[code] = filtered;
     });
@@ -723,7 +732,7 @@ export default function HomePage() {
     }
     if (currentTab === 'all' || currentTab === 'fav') return null;
     const group = groupById.get(currentTab);
-    if (!group || !Array.isArray(group.codes)) return null;
+    if (!group || !isArray(group.codes)) return null;
     return new Set(group.codes);
   }, [currentTab, groupById, groupsWithHoldings, funds, holdings, getHoldingProfit]);
 
@@ -801,7 +810,13 @@ export default function HomePage() {
       filtered = filtered.filter((f) => {
         const name = String(f?.name ?? '').toLowerCase();
         const code = String(f?.code ?? '').toLowerCase();
-        return name.includes(qLower) || code.includes(qLower);
+        let hasTagMatch = false;
+        if (f?.code && Array.isArray(fundTagListsByCode?.[f.code])) {
+          hasTagMatch = fundTagListsByCode[f.code].some(
+            (t) => t?.name && String(t.name).toLowerCase().includes(qLower)
+          );
+        }
+        return name.includes(qLower) || code.includes(qLower) || hasTagMatch;
       });
     }
 
@@ -820,6 +835,37 @@ export default function HomePage() {
     const profitByCode =
       sortBy === 'holdingAmount' || sortBy === 'holdingRatio' || sortBy === 'todayProfit' || sortBy === 'holding'
         ? new Map(filtered.map((f) => [f.code, getHoldingProfitForTab(f, holdingsForTabWithLinked[f.code])]))
+        : null;
+
+    const estimateProfitByCode =
+      sortBy === 'estimateProfit'
+        ? new Map(
+            filtered.map((f) => {
+              const hasTodayData = isNavUpdated(f.jzrq, todayStr, f.confirmDays);
+              const holding = holdingsForTabWithLinked[f.code];
+              const profit = getHoldingProfitForTab(f, holding);
+              const total = profit ? profit.profitTotal : null;
+              if (hasTodayData) return [f.code, total];
+
+              const principal =
+                holding && isNumber(holding.cost) && isNumber(holding.share) ? holding.cost * holding.share : 0;
+              const hasTodayEstimate = !f.noValuation && isString(f.gztime) && f.gztime.startsWith(todayStr);
+              const estimateChangeValue = f.noValuation ? null : isNumber(f.gszzl) ? Number(f.gszzl) : null;
+              const holdingProfitPercentValue = total != null && principal > 0 ? (total / principal) * 100 : null;
+              const hasEstimatePercent = hasTodayEstimate && estimateChangeValue != null;
+              const hasHoldingPercent = holdingProfitPercentValue != null;
+              const fallbackEstimateProfitPercentValue =
+                hasEstimatePercent || hasHoldingPercent
+                  ? (hasEstimatePercent ? estimateChangeValue : 0) + (hasHoldingPercent ? holdingProfitPercentValue : 0)
+                  : null;
+
+              const val =
+                fallbackEstimateProfitPercentValue != null && principal > 0
+                  ? principal * (fallbackEstimateProfitPercentValue / 100)
+                  : null;
+              return [f.code, val];
+            })
+          )
         : null;
 
     return filtered.sort((a, b) => {
@@ -908,31 +954,8 @@ export default function HomePage() {
         return sortOrder === 'asc' ? valA - valB : valB - valA;
       }
       if (sortBy === 'estimateProfit') {
-        const getEstimateProfitValue = (f) => {
-          const hasTodayData = f.jzrq === todayStr;
-          const holding = holdingsForTabWithLinked[f.code];
-          const profit = getHoldingProfitForTab(f, holding);
-          const total = profit ? profit.profitTotal : null;
-          if (hasTodayData) return total;
-
-          const principal =
-            holding && isNumber(holding.cost) && isNumber(holding.share) ? holding.cost * holding.share : 0;
-          const hasTodayEstimate = !f.noValuation && isString(f.gztime) && f.gztime.startsWith(todayStr);
-          const estimateChangeValue = f.noValuation ? null : isNumber(f.gszzl) ? Number(f.gszzl) : null;
-          const holdingProfitPercentValue = total != null && principal > 0 ? (total / principal) * 100 : null;
-          const hasEstimatePercent = hasTodayEstimate && estimateChangeValue != null;
-          const hasHoldingPercent = holdingProfitPercentValue != null;
-          const fallbackEstimateProfitPercentValue =
-            hasEstimatePercent || hasHoldingPercent
-              ? (hasEstimatePercent ? estimateChangeValue : 0) + (hasHoldingPercent ? holdingProfitPercentValue : 0)
-              : null;
-
-          return fallbackEstimateProfitPercentValue != null && principal > 0
-            ? principal * (fallbackEstimateProfitPercentValue / 100)
-            : null;
-        };
-        const valA = getEstimateProfitValue(a);
-        const valB = getEstimateProfitValue(b);
+        const valA = estimateProfitByCode ? estimateProfitByCode.get(a.code) : null;
+        const valB = estimateProfitByCode ? estimateProfitByCode.get(b.code) : null;
         const hasA = valA != null && Number.isFinite(valA);
         const hasB = valB != null && Number.isFinite(valB);
         if (!hasA && !hasB) return 0;
@@ -943,17 +966,26 @@ export default function HomePage() {
       if (sortBy === 'yesterdayProfit') {
         const getYesterdayProfit = (code, jzrq) => {
           const list = currentFundDailyEarnings?.[code];
-          if (!Array.isArray(list) || list.length === 0) return null;
+          if (!isArray(list) || list.length === 0) return null;
           let matchedDaily = null;
-          if (typeof jzrq === 'string') {
-            for (const item of list) {
-              if (item?.date === jzrq) {
-                matchedDaily = item;
-                break;
+          if (isString(jzrq)) {
+            if (jzrq === todayStr) {
+              for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i]?.date && list[i].date < todayStr) {
+                  matchedDaily = list[i];
+                  break;
+                }
+              }
+            } else {
+              for (const item of list) {
+                if (item?.date === jzrq) {
+                  matchedDaily = item;
+                  break;
+                }
               }
             }
           }
-          if (!matchedDaily) matchedDaily = list[list.length - 1];
+          if (!matchedDaily && jzrq !== todayStr) matchedDaily = list[list.length - 1];
           return matchedDaily && Number.isFinite(Number(matchedDaily.earnings)) ? Number(matchedDaily.earnings) : null;
         };
         const valA = getYesterdayProfit(a.code, a.jzrq);
@@ -1049,7 +1081,7 @@ export default function HomePage() {
         const getTagKey = (fund) => {
           const code = String(fund?.code ?? '').trim();
           const list = code ? fundTagListsByCode?.[code] : null;
-          if (!Array.isArray(list) || list.length === 0) return '';
+          if (!isArray(list) || list.length === 0) return '';
           return list
             .map((t) => (t?.name != null ? String(t.name).trim() : ''))
             .filter(Boolean)
@@ -1096,7 +1128,7 @@ export default function HomePage() {
       const code = f?.code;
       if (!code) continue;
       const list = currentFundDailyEarnings[code];
-      if (!Array.isArray(list) || list.length === 0) continue;
+      if (!isArray(list) || list.length === 0) continue;
       const byDate = new Map();
       for (const item of list) {
         const date = item?.date ? String(item.date) : '';
@@ -1136,17 +1168,13 @@ export default function HomePage() {
   // PC 端表格数据（用于 PcFundTable）
   const pcFundTableData = useMemo(() => {
     return displayFunds.map((f) => {
-      const hasTodayData = f.jzrq === todayStr;
+      const hasTodayData = isNavUpdated(f.jzrq, todayStr, f.confirmDays);
       const latestNav =
-        f.dwjz != null && f.dwjz !== ''
-          ? typeof f.dwjz === 'number'
-            ? Number(f.dwjz).toFixed(4)
-            : String(f.dwjz)
-          : '—';
+        f.dwjz != null && f.dwjz !== '' ? (isNumber(f.dwjz) ? Number(f.dwjz).toFixed(4) : String(f.dwjz)) : '—';
       const estimateNav = f.noValuation
         ? '—'
         : f.gsz != null
-          ? typeof f.gsz === 'number'
+          ? isNumber(f.gsz)
             ? Number(f.gsz).toFixed(4)
             : String(f.gsz)
           : '—';
@@ -1170,10 +1198,7 @@ export default function HomePage() {
         (currentTab === 'all' || currentTab === 'fav') && linkedHoldingsForAllFav.linked?.has?.(f.code);
       const profit = getHoldingProfitForTab(f, holding);
       const amount = profit ? profit.amount : null;
-      const holdingAmount =
-        amount == null
-          ? '未设置'
-          : `¥${Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const holdingAmount = amount == null ? '未设置' : `¥${formatMoney(amount)}`;
       const holdingAmountValue = amount;
       const holdingRatioValue =
         amount != null && Number.isFinite(amount) && amount > 0 && groupTotalHoldingAmount > 0
@@ -1187,17 +1212,14 @@ export default function HomePage() {
       const todayProfit =
         profitToday == null
           ? ''
-          : `${profitToday > 0 ? '+' : profitToday < 0 ? '-' : ''}${Math.abs(profitToday).toFixed(2)}`;
+          : `${profitToday > 0 ? '+' : profitToday < 0 ? '-' : ''}${formatMoney(Math.abs(profitToday))}`;
       const todayProfitValue = profitToday;
 
       const total = profit ? profit.profitTotal : null;
       const principal = holding && isNumber(holding.cost) && isNumber(holding.share) ? holding.cost * holding.share : 0;
       const holdingCostValue =
         holding && isNumber(holding.cost) && isNumber(holding.share) ? holding.cost * holding.share : null;
-      const holdingCost =
-        holdingCostValue == null
-          ? '-'
-          : Number(holdingCostValue).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const holdingCost = holdingCostValue == null ? '-' : formatMoney(holdingCostValue);
       const costNavValue = holding && isNumber(holding.cost) ? holding.cost : null;
       const costNav = costNavValue == null ? '—' : Number(costNavValue).toFixed(4);
       const todayProfitPercent =
@@ -1207,31 +1229,51 @@ export default function HomePage() {
 
       const latestNavDateStr = isString(f.jzrq) ? f.jzrq : '';
       const dailyMeta = latestDailyByCode?.[f.code];
-      const matchedDaily =
-        (latestNavDateStr ? dailyMeta?.byDate?.get(latestNavDateStr) || null : null) || dailyMeta?.last || null;
+      const dailyList = currentFundDailyEarnings?.[f.code];
+
+      // 解析昨日收益对应的记录（避免当晚更新今日净值后，“昨日收益”显示成“今日收益”）
+      let yesterdayMatchedDaily = null;
+      if (isArray(dailyList) && dailyList.length > 0) {
+        if (latestNavDateStr === todayStr) {
+          // 如果最新净值日期已更新为今天，昨日收益取今天之前的最后一个记录
+          for (let i = dailyList.length - 1; i >= 0; i--) {
+            if (dailyList[i]?.date && dailyList[i].date < todayStr) {
+              yesterdayMatchedDaily = dailyList[i];
+              break;
+            }
+          }
+        } else {
+          // 否则取最新净值日期对应的记录或最后一个记录
+          yesterdayMatchedDaily =
+            (latestNavDateStr ? dailyMeta?.byDate?.get(latestNavDateStr) || null : null) || dailyMeta?.last || null;
+        }
+      }
+
       const yesterdayProfitVal =
-        matchedDaily && Number.isFinite(Number(matchedDaily.earnings)) ? Number(matchedDaily.earnings) : null;
+        yesterdayMatchedDaily && Number.isFinite(Number(yesterdayMatchedDaily.earnings))
+          ? Number(yesterdayMatchedDaily.earnings)
+          : null;
       const yesterdayProfit =
         yesterdayProfitVal == null
           ? ''
-          : `${yesterdayProfitVal > 0 ? '+' : yesterdayProfitVal < 0 ? '-' : ''}${Math.abs(yesterdayProfitVal).toFixed(2)}`;
+          : `${yesterdayProfitVal > 0 ? '+' : yesterdayProfitVal < 0 ? '-' : ''}${formatMoney(Math.abs(yesterdayProfitVal))}`;
       const dailyBaseCostAmount =
-        matchedDaily &&
-        matchedDaily.baseCostAmount != null &&
-        matchedDaily.baseCostAmount !== '' &&
-        Number.isFinite(Number(matchedDaily.baseCostAmount))
-          ? Number(matchedDaily.baseCostAmount)
+        yesterdayMatchedDaily &&
+        yesterdayMatchedDaily.baseCostAmount != null &&
+        yesterdayMatchedDaily.baseCostAmount !== '' &&
+        Number.isFinite(Number(yesterdayMatchedDaily.baseCostAmount))
+          ? Number(yesterdayMatchedDaily.baseCostAmount)
           : null;
       const derivedRateFromSnapshot =
         yesterdayProfitVal != null && dailyBaseCostAmount != null && dailyBaseCostAmount > 0
           ? (yesterdayProfitVal / dailyBaseCostAmount) * 100
           : null;
       const dailyRate =
-        matchedDaily &&
-        matchedDaily.rate != null &&
-        matchedDaily.rate !== '' &&
-        Number.isFinite(Number(matchedDaily.rate))
-          ? Number(matchedDaily.rate)
+        yesterdayMatchedDaily &&
+        yesterdayMatchedDaily.rate != null &&
+        yesterdayMatchedDaily.rate !== '' &&
+        Number.isFinite(Number(yesterdayMatchedDaily.rate))
+          ? Number(yesterdayMatchedDaily.rate)
           : derivedRateFromSnapshot;
       const yesterdayProfitPercentLine =
         dailyRate != null
@@ -1247,7 +1289,7 @@ export default function HomePage() {
             : null;
 
       const holdingProfit =
-        total == null ? '' : `${total > 0 ? '+' : total < 0 ? '-' : ''}${Math.abs(total).toFixed(2)}`;
+        total == null ? '' : `${total > 0 ? '+' : total < 0 ? '-' : ''}${formatMoney(Math.abs(total))}`;
       const holdingProfitPercent =
         total != null && principal > 0
           ? `${total > 0 ? '+' : total < 0 ? '-' : ''}${Math.abs((total / principal) * 100).toFixed(2)}%`
@@ -1270,7 +1312,7 @@ export default function HomePage() {
       const estimateProfit =
         estimateProfitValue == null
           ? ''
-          : `${estimateProfitValue > 0 ? '+' : estimateProfitValue < 0 ? '-' : ''}${Math.abs(estimateProfitValue).toFixed(2)}`;
+          : `${estimateProfitValue > 0 ? '+' : estimateProfitValue < 0 ? '-' : ''}${formatMoney(Math.abs(estimateProfitValue))}`;
       const estimateProfitPercent =
         estimateProfitPercentValue == null
           ? ''
@@ -1304,14 +1346,14 @@ export default function HomePage() {
       const sinceAddedDate = (() => {
         const raw = sinceAddedDateRaw || '';
         if (!raw) return '';
-        const currentYear = typeof todayStr === 'string' && todayStr.length >= 4 ? todayStr.slice(0, 4) : '';
+        const currentYear = isString(todayStr) && todayStr.length >= 4 ? todayStr.slice(0, 4) : '';
         if (currentYear && raw.startsWith(`${currentYear}-`) && raw.length >= 10) return raw.slice(5);
         return raw;
       })();
 
       const fc = String(f.code ?? '').trim();
       const listFromDerived = fundTagListsByCode[fc];
-      const fundTags = Array.isArray(listFromDerived)
+      const fundTags = isArray(listFromDerived)
         ? listFromDerived.map(({ name, theme }) => ({
             name: String(name ?? '').trim(),
             theme: normalizeFundTagTheme(theme)
@@ -1324,7 +1366,7 @@ export default function HomePage() {
         fundName: f.name,
         fundTags,
         isHoldingLinked: !!isHoldingLinked,
-        isUpdated: f.jzrq === todayStr,
+        isUpdated: isNavUpdated(f.jzrq, todayStr, f.confirmDays),
         hasDca: dcaPlansForTab[f.code]?.enabled === true,
         hasPending: pendingCodesForTab.has(f.code),
         latestNav,
@@ -1380,7 +1422,6 @@ export default function HomePage() {
     currentTab,
     summaryHoldingSourceGroupByCode,
     linkedHoldingsForAllFav,
-    // fundTagRecords 已移除：fundTagListsByCode 是其派生值，两者同时存在会导致标签变化时双重触发
     fundTagListsByCode,
     groupTotalHoldingAmount
   ]);
@@ -1542,7 +1583,10 @@ export default function HomePage() {
     if (isProcessingPendingRef.current) return;
     isProcessingPendingRef.current = true;
     try {
-      const currentPending = useStorageStore.getState().pendingTrades;
+      const currentPending = normalizePendingTrades(useStorageStore.getState().pendingTrades);
+      if (currentPending.length !== (useStorageStore.getState().pendingTrades || []).length) {
+        storageStore.setItem('pendingTrades', JSON.stringify(currentPending));
+      }
       if (currentPending.length === 0) return;
 
       let stateChanged = false;
@@ -1556,6 +1600,7 @@ export default function HomePage() {
       const processedIds = new Set();
       const newTransactions = [];
 
+      const handledIds = new Set();
       const readCurrent = (fundCode, tradeGid) => {
         if (!tradeGid) {
           return tempHoldings[fundCode] || { share: 0, cost: 0 };
@@ -1574,6 +1619,9 @@ export default function HomePage() {
       };
 
       for (const trade of currentPending) {
+        if (trade?.id && handledIds.has(trade.id)) continue;
+        if (trade?.id) handledIds.add(trade.id);
+
         const tradeGid = trade.groupId || null;
         let queryDate = trade.date;
         if (trade.isAfter3pm) {
@@ -1649,37 +1697,39 @@ export default function HomePage() {
       }
 
       if (stateChanged) {
-        setHoldings(tempHoldings);
-        setGroupHoldings(tempGroupHoldings);
-
-        setPendingTrades((prev) => {
-          const next = prev.filter((t) => !processedIds.has(t.id));
-          return next;
+        // 构建最终的 transactions 状态
+        const prevTransactions = useStorageStore.getState().transactions;
+        const nextTransactions = { ...prevTransactions };
+        newTransactions.forEach((tx) => {
+          const current = nextTransactions[tx.fundCode] || [];
+          // 避免重复添加 (虽然 id 应该唯一)
+          if (!current.some((t) => t.id === tx.id)) {
+            const row = {
+              id: tx.id,
+              type: tx.type,
+              share: tx.share,
+              amount: tx.amount,
+              price: tx.price,
+              date: tx.date,
+              isAfter3pm: tx.isAfter3pm,
+              isDca: tx.isDca,
+              timestamp: tx.timestamp
+            };
+            if (tx.groupId) row.groupId = tx.groupId;
+            nextTransactions[tx.fundCode] = [row, ...current].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          }
         });
 
-        setTransactions((prev) => {
-          const nextState = { ...prev };
-          newTransactions.forEach((tx) => {
-            const current = nextState[tx.fundCode] || [];
-            // 避免重复添加 (虽然 id 应该唯一)
-            if (!current.some((t) => t.id === tx.id)) {
-              const row = {
-                id: tx.id,
-                type: tx.type,
-                share: tx.share,
-                amount: tx.amount,
-                price: tx.price,
-                date: tx.date,
-                isAfter3pm: tx.isAfter3pm,
-                isDca: tx.isDca,
-                timestamp: tx.timestamp
-              };
-              if (tx.groupId) row.groupId = tx.groupId;
-              nextState[tx.fundCode] = [row, ...current].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            }
-          });
-          return nextState;
-        });
+        // 构建最终的 pendingTrades 状态
+        const prevPending = normalizePendingTrades(useStorageStore.getState().pendingTrades);
+        const nextPending = prevPending.filter((t) => !processedIds.has(t.id));
+
+        // 通过 storageStore.setItem 更新（内部会同步更新 state + localStorage + 触发云端同步）
+        // 由于在同一同步代码块中，React 18 会自动批量处理，只触发一次 re-render
+        storageStore.setItem('holdings', JSON.stringify(tempHoldings));
+        storageStore.setItem('groupHoldings', JSON.stringify(tempGroupHoldings));
+        storageStore.setItem('pendingTrades', JSON.stringify(nextPending));
+        storageStore.setItem('transactions', JSON.stringify(nextTransactions));
 
         showToast(`已处理 ${processedIds.size} 笔待定交易`, 'success');
       }
@@ -1710,7 +1760,7 @@ export default function HomePage() {
     // 复制“历史交易记录”到当前分组（不改变原记录）
     setTransactions((prev) => {
       const list = prev?.[fundCode] || [];
-      if (!Array.isArray(list) || list.length === 0) return prev;
+      if (!isArray(list) || list.length === 0) return prev;
 
       const existingCurrent = list.filter((t) => t && t.groupId === targetGid);
       const copiedKey = new Set(
@@ -1742,7 +1792,7 @@ export default function HomePage() {
 
     // 复制“待处理队列”到当前分组（不改变原记录）
     setPendingTrades((prev) => {
-      const list = Array.isArray(prev) ? prev : [];
+      const list = isArray(prev) ? prev : [];
       const existingCurrent = list.filter((t) => t && t.fundCode === fundCode && t.groupId === targetGid);
       const copiedKey = new Set(
         existingCurrent.filter((t) => t?.copiedFromId).map((t) => `${t.copiedFromId}|${t.copiedFromGroupId ?? ''}`)
@@ -1824,8 +1874,7 @@ export default function HomePage() {
         ...(tradeGid ? { groupId: tradeGid } : {})
       };
 
-      const next = [...pendingTrades, pending];
-      setPendingTrades(next);
+      setPendingTrades((prev) => [...(prev || []), pending]);
 
       // 如果该基金没有持仓数据，初始化持仓金额为 0
       const tabH = tradeGid ? groupHoldings[tradeGid] || {} : holdings;
@@ -2050,11 +2099,26 @@ export default function HomePage() {
     [fundTagRecords]
   );
 
+  const toggleValuationTrendCollapse = useCallback(
+    (code) => {
+      setCollapsedValuationTrends((prev) => {
+        const next = new Set(prev);
+        if (next.has(code)) {
+          next.delete(code);
+        } else {
+          next.add(code);
+        }
+        return next;
+      });
+    },
+    [setCollapsedValuationTrends]
+  );
+
   const handleSaveFundTags = useCallback(
     (code, tagRows) => {
       if (!code) return;
       const fc = String(code).trim();
-      const rows = Array.isArray(tagRows) ? tagRows : [];
+      const rows = isArray(tagRows) ? tagRows : [];
       const normalized = normalizeFundTagInstanceListFromInput(rows);
 
       setFundTagRecords((prev) => {
@@ -2122,7 +2186,7 @@ export default function HomePage() {
     (payload) => {
       const th = String(payload?.theme ?? '').trim() || DEFAULT_FUND_TAG_THEME;
       const rawNames =
-        Array.isArray(payload?.names) && payload.names.length
+        isArray(payload?.names) && payload.names.length
           ? payload.names
           : payload?.name != null && String(payload.name).trim()
             ? [String(payload.name).trim()]
@@ -2163,6 +2227,32 @@ export default function HomePage() {
     [storageHelper]
   );
 
+  /** 更新全局标签（如名称、主题），影响所有使用该标签的基金 */
+  const handleUpdateGlobalTag = useCallback(
+    (tagId, payload) => {
+      const id = String(tagId ?? '').trim();
+      const name = String(payload?.name ?? '').trim();
+      const theme = String(payload?.theme ?? '').trim() || DEFAULT_FUND_TAG_THEME;
+      if (!id || !name) return;
+
+      setFundTagRecords((prev) => {
+        const next = prev.map((r) => {
+          if (String(r.id).trim() === id) {
+            return sanitizeTagRowForStorage({
+              ...r,
+              name,
+              theme
+            });
+          }
+          return r;
+        });
+        storageHelper.setItem('tags', JSON.stringify(next));
+        return next;
+      });
+    },
+    [storageHelper]
+  );
+
   /** 删除前展示：该标签关联的基金文案列表（按标签 id） */
   const getTagUsageLabels = useCallback(
     (tagId) => {
@@ -2178,6 +2268,14 @@ export default function HomePage() {
     },
     [fundTagRecords, funds]
   );
+
+  // 当全局标签变化且标签编辑弹框处于打开状态时，触发弹框层的重新渲染，以便底部可选标签池能立即展示最新内容
+  useEffect(() => {
+    const ms = useModalStore.getState();
+    if (ms.fundTagsEdit?.open) {
+      useModalStore.setState({ fundTagsEdit: { ...ms.fundTagsEdit, _tick: Date.now() } });
+    }
+  }, [fundTagRecords]);
 
   const applyViewMode = useCallback(
     (mode) => {
@@ -2391,26 +2489,25 @@ export default function HomePage() {
         return;
       }
 
-      setDcaPlans(nextPlans);
+      // 计算去重后的新 pending 列表
+      const prevPending = normalizePendingTrades(useStorageStore.getState().pendingTrades);
+      const existingIds = new Set(prevPending.map((t) => t.id));
+      const unique = newPending.filter((t) => !existingIds.has(t.id));
 
-      const pendingSnapshot = useStorageStore.getState().pendingTrades;
-      const snapshotIds = new Set((Array.isArray(pendingSnapshot) ? pendingSnapshot : []).map((t) => t.id));
-      const uniqueNewPending = newPending.filter((t) => !snapshotIds.has(t.id));
+      // 批量更新 dcaPlans 和 pendingTrades
+      // 通过 storageStore.setItem 更新（内部会同步更新 state + localStorage + 触发云端同步）
+      // 由于在同一同步代码块中，React 18 会自动批量处理，只触发一次 re-render
+      const nextPending = normalizePendingTrades(unique.length > 0 ? [...prevPending, ...unique] : prevPending);
+      storageStore.setItem('dcaPlans', JSON.stringify(nextPlans));
+      storageStore.setItem('pendingTrades', JSON.stringify(nextPending));
 
-      setPendingTrades((prev) => {
-        const existingIds = new Set((prev || []).map((t) => t.id));
-        const unique = newPending.filter((t) => !existingIds.has(t.id));
-        if (unique.length === 0) return prev;
-        return [...(prev || []), ...unique];
-      });
-
-      if (uniqueNewPending.length > 0) {
-        showToast(`已生成 ${uniqueNewPending.length} 笔定投买入`, 'success');
+      if (unique.length > 0) {
+        showToast(`已生成 ${unique.length} 笔定投买入`, 'success');
       }
     } finally {
       isSchedulingDcaRef.current = false;
     }
-  }, [isTradingDay, setDcaPlans, setPendingTrades]);
+  }, [isTradingDay, setDcaPlans]);
 
   const { refreshing, refreshCycleStartRef, manualRefresh, refreshAll } = useRefreshManager({
     scheduleDcaTrades,
@@ -2510,7 +2607,7 @@ export default function HomePage() {
         if (cancelled) return;
 
         const saved = storageStore.getItem('funds', []);
-        if (Array.isArray(saved) && saved.length) {
+        if (isArray(saved) && saved.length) {
           const deduped = dedupeByCode(saved);
           const fundCodeSet = new Set(deduped.map((f) => f?.code).filter(Boolean));
           let storedTagRows = [];
@@ -2519,7 +2616,7 @@ export default function HomePage() {
           } catch {
             /* empty */
           }
-          if (!Array.isArray(storedTagRows)) storedTagRows = [];
+          if (!isArray(storedTagRows)) storedTagRows = [];
           const normalizedTags = storedTagRows
             .map((r) => {
               const codes = getFundCodesFromTagRecord(r).filter((c) => fundCodeSet.has(c));
@@ -2538,7 +2635,7 @@ export default function HomePage() {
         } else {
           try {
             const t = storageStore.getItem('tags', []);
-            const arr = Array.isArray(t) ? t : [];
+            const arr = isArray(t) ? t : [];
             const normalized = arr
               .map((r) => {
                 const codes = getFundCodesFromTagRecord(r);
@@ -2569,7 +2666,7 @@ export default function HomePage() {
         }
         // 加载待处理交易
         const savedPending = storageStore.getItem('pendingTrades', []);
-        if (Array.isArray(savedPending)) {
+        if (isArray(savedPending)) {
           setPendingTrades(savedPending);
         }
         // 加载分组状态
@@ -2578,14 +2675,14 @@ export default function HomePage() {
         if (
           savedTab === 'all' ||
           savedTab === 'fav' ||
-          (savedTab && Array.isArray(groups) && groups.some((g) => g?.id === savedTab))
+          (savedTab && isArray(groups) && groups.some((g) => g?.id === savedTab))
         ) {
           setCurrentTab(savedTab);
         } else if (savedTab) {
           setCurrentTab('all');
         }
         // 加载持仓数据
-        const seedGh = seedGroupHoldingsFromGlobal(holdings, Array.isArray(groups) ? groups : [], groupHoldings);
+        const seedGh = seedGroupHoldingsFromGlobal(holdings, isArray(groups) ? groups : [], groupHoldings);
         if (seedGh.changed) {
           setGroupHoldings(seedGh.next);
         }
@@ -2687,7 +2784,9 @@ export default function HomePage() {
         setLoginInitialError('');
       }
       // 仅在明确的登录动作（SIGNED_IN）时检查冲突；INITIAL_SESSION（刷新页面等）不检查，直接以云端为准
-      fetchCloudConfig(session.user.id, isExplicitLogin);
+      fetchCloudConfig(session.user.id, isExplicitLogin, {
+        refreshAfterApply: event === 'INITIAL_SESSION'
+      });
     };
 
     supabase.auth.getSession().then(async ({ data, error }) => {
@@ -3009,7 +3108,7 @@ export default function HomePage() {
 
     setGroupHoldings((prev) => {
       const next = { ...(prev || {}) };
-      const getBucket = (gid) => (next[gid] && typeof next[gid] === 'object' ? { ...next[gid] } : {});
+      const getBucket = (gid) => (next[gid] && isObject(next[gid]) ? { ...next[gid] } : {});
 
       // 读取源持仓
       const sourceBucket = fromGid ? getBucket(fromGid) : null;
@@ -3061,7 +3160,7 @@ export default function HomePage() {
       let changed = false;
       for (const code of list) {
         const arr = out?.[code];
-        if (!Array.isArray(arr) || arr.length === 0) continue;
+        if (!isArray(arr) || arr.length === 0) continue;
         const nextArr = arr.map((tx) => {
           if (!tx) return tx;
           const inFromScope = fromGid ? tx.groupId === fromGid : !tx.groupId;
@@ -3083,8 +3182,8 @@ export default function HomePage() {
       const scoped = migrateDcaPlansToScoped(prev);
       const fromKey = fromGid || DCA_SCOPE_GLOBAL;
       const toKey = toGid || DCA_SCOPE_GLOBAL;
-      const fromBucket = scoped[fromKey] && typeof scoped[fromKey] === 'object' ? { ...scoped[fromKey] } : {};
-      const toBucket = scoped[toKey] && typeof scoped[toKey] === 'object' ? { ...scoped[toKey] } : {};
+      const fromBucket = scoped[fromKey] && isObject(scoped[fromKey]) ? { ...scoped[fromKey] } : {};
+      const toBucket = scoped[toKey] && isObject(scoped[toKey]) ? { ...scoped[toKey] } : {};
       let changed = false;
       for (const code of list) {
         if (fromBucket[code] === undefined) continue;
@@ -3540,32 +3639,29 @@ export default function HomePage() {
     const ms = Math.max(30, Number(seconds)) * 1000;
     setTempSeconds(Math.round(ms / 1000));
     setRefreshMs(ms);
-    const nextShowMarketIndex =
-      typeof showMarketIndexOverride === 'boolean'
-        ? showMarketIndexOverride
-        : isMobileOverride
-          ? showMarketIndexMobile
-          : showMarketIndexPc;
+    const nextShowMarketIndex = isBoolean(showMarketIndexOverride)
+      ? showMarketIndexOverride
+      : isMobileOverride
+        ? showMarketIndexMobile
+        : showMarketIndexPc;
 
     const targetIsMobile = Boolean(isMobileOverride);
     if (targetIsMobile) setShowMarketIndexMobile(nextShowMarketIndex);
     else setShowMarketIndexPc(nextShowMarketIndex);
 
-    const nextShowGroupFundSearch =
-      typeof showGroupFundSearchOverride === 'boolean'
-        ? showGroupFundSearchOverride
-        : targetIsMobile
-          ? showGroupFundSearchMobile
-          : showGroupFundSearchPc;
+    const nextShowGroupFundSearch = isBoolean(showGroupFundSearchOverride)
+      ? showGroupFundSearchOverride
+      : targetIsMobile
+        ? showGroupFundSearchMobile
+        : showGroupFundSearchPc;
     if (targetIsMobile) setShowGroupFundSearchMobile(nextShowGroupFundSearch);
     else setShowGroupFundSearchPc(nextShowGroupFundSearch);
 
-    const nextDynamicStyle =
-      typeof dynamicStyleOverride === 'boolean'
-        ? dynamicStyleOverride
-        : targetIsMobile
-          ? dynamicStyleMobile
-          : dynamicStylePc;
+    const nextDynamicStyle = isBoolean(dynamicStyleOverride)
+      ? dynamicStyleOverride
+      : targetIsMobile
+        ? dynamicStyleMobile
+        : dynamicStylePc;
     if (targetIsMobile) setDynamicStyleMobile(nextDynamicStyle);
     else setDynamicStylePc(nextDynamicStyle);
 
@@ -3690,7 +3786,7 @@ export default function HomePage() {
         let mergedFunds = currentFunds;
         let appendedCodes = [];
 
-        if (Array.isArray(data.funds)) {
+        if (isArray(data.funds)) {
           const incomingFunds = dedupeByCode(data.funds.map(stripLegacyTagsFromFundObject));
           const existingCodes = new Set(currentFunds.map((f) => f.code));
           const newItems = incomingFunds.filter((f) => f && f.code && !existingCodes.has(f.code));
@@ -3699,18 +3795,18 @@ export default function HomePage() {
           setFunds(mergedFunds);
         }
 
-        if (Array.isArray(data.favorites)) {
+        if (isArray(data.favorites)) {
           const fundCodeSet = new Set(mergedFunds.map((f) => f?.code).filter(Boolean));
           const mergedFav = cleanCodeArray([...currentFavorites, ...data.favorites], fundCodeSet);
           setFavorites(new Set(mergedFav));
         }
 
-        if (Array.isArray(data.tags)) {
+        if (isArray(data.tags)) {
           const currentTags = storageStore.getItem('tags', []);
           const fundCodeSet = new Set(mergedFunds.map((f) => f?.code).filter(Boolean));
-          const byId = new Map((Array.isArray(currentTags) ? currentTags : []).map((r) => [String(r.id), r]));
+          const byId = new Map((isArray(currentTags) ? currentTags : []).map((r) => [String(r.id), r]));
           for (const r of data.tags) {
-            if (!r || typeof r !== 'object') continue;
+            if (!r || !isObject(r)) continue;
             const codes = getFundCodesFromTagRecord(r).filter((c) => fundCodeSet.has(c));
             const name = String(r.name ?? '').trim();
             if (!name) continue;
@@ -3737,7 +3833,7 @@ export default function HomePage() {
 
         // fundTagLists 已废弃：导入时无需处理该字段
 
-        if (Array.isArray(data.groups)) {
+        if (isArray(data.groups)) {
           // 合并分组：如果 ID 相同则合并 codes，否则添加新分组
           const mergedGroups = [...currentGroups];
           data.groups.forEach((incomingGroup) => {
@@ -3754,17 +3850,17 @@ export default function HomePage() {
           setGroups(mergedGroups);
         }
 
-        if (Array.isArray(data.collapsedCodes)) {
+        if (isArray(data.collapsedCodes)) {
           const mergedCollapsed = Array.from(new Set([...currentCollapsed, ...data.collapsedCodes]));
           setCollapsedCodes(new Set(mergedCollapsed));
         }
 
-        if (Array.isArray(data.collapsedTrends)) {
+        if (isArray(data.collapsedTrends)) {
           const mergedTrends = Array.from(new Set([...currentTrends, ...data.collapsedTrends]));
           setCollapsedTrends(new Set(mergedTrends));
         }
 
-        if (Array.isArray(data.collapsedEarnings)) {
+        if (isArray(data.collapsedEarnings)) {
           const mergedEarnings = Array.from(new Set([...currentEarnings, ...data.collapsedEarnings]));
           setCollapsedEarnings(new Set(mergedEarnings));
         }
@@ -3795,7 +3891,7 @@ export default function HomePage() {
           const currentTransactions = storageStore.getItem('transactions', {});
           const mergedTransactions = { ...currentTransactions };
           Object.entries(data.transactions).forEach(([code, txs]) => {
-            if (!Array.isArray(txs)) return;
+            if (!isArray(txs)) return;
             const existing = mergedTransactions[code] || [];
             const existingIds = new Set(existing.map((t) => t.id));
             const newTxs = txs.filter((t) => !existingIds.has(t.id));
@@ -3804,8 +3900,8 @@ export default function HomePage() {
           setTransactions(mergedTransactions);
         }
 
-        if (Array.isArray(data.pendingTrades)) {
-          const existingPending = Array.isArray(currentPendingTrades) ? currentPendingTrades : [];
+        if (isArray(data.pendingTrades)) {
+          const existingPending = isArray(currentPendingTrades) ? currentPendingTrades : [];
           const incomingPending = data.pendingTrades.filter((trade) => trade && trade.fundCode);
           const fundCodeSet = new Set(mergedFunds.map((f) => f.code));
           const keyOf = (trade) => {
@@ -3844,7 +3940,7 @@ export default function HomePage() {
               ...data.customSettings
             };
             setCustomSettings(mergedSettings);
-            if (mergedSettings.localSortRules && Array.isArray(mergedSettings.localSortRules)) {
+            if (mergedSettings.localSortRules && isArray(mergedSettings.localSortRules)) {
               setSortRules(mergedSettings.localSortRules);
             }
             if (mergedSettings.localSortDisplayMode && SORT_DISPLAY_MODES.has(mergedSettings.localSortDisplayMode)) {
@@ -3864,20 +3960,16 @@ export default function HomePage() {
                 setMobileSortDisplayMode(mergedSettings.mobileLocalSortDisplayMode);
               }
             }
-            if (
-              typeof mergedSettings.pcContainerWidth === 'number' &&
-              Number.isFinite(mergedSettings.pcContainerWidth)
-            ) {
+            if (isNumber(mergedSettings.pcContainerWidth) && Number.isFinite(mergedSettings.pcContainerWidth)) {
               const maxWidth = window.matchMedia('(max-width: 640px)').matches ? 99999 : window.innerWidth;
               setContainerWidth(Math.min(maxWidth, Math.max(600, mergedSettings.pcContainerWidth)));
             }
-            if (typeof mergedSettings.showMarketIndexPc === 'boolean')
-              setShowMarketIndexPc(mergedSettings.showMarketIndexPc);
-            if (typeof mergedSettings.showMarketIndexMobile === 'boolean')
+            if (isBoolean(mergedSettings.showMarketIndexPc)) setShowMarketIndexPc(mergedSettings.showMarketIndexPc);
+            if (isBoolean(mergedSettings.showMarketIndexMobile))
               setShowMarketIndexMobile(mergedSettings.showMarketIndexMobile);
-            if (typeof mergedSettings.showGroupFundSearchPc === 'boolean')
+            if (isBoolean(mergedSettings.showGroupFundSearchPc))
               setShowGroupFundSearchPc(mergedSettings.showGroupFundSearchPc);
-            if (typeof mergedSettings.showGroupFundSearchMobile === 'boolean')
+            if (isBoolean(mergedSettings.showGroupFundSearchMobile))
               setShowGroupFundSearchMobile(mergedSettings.showGroupFundSearchMobile);
           } catch {}
         }
@@ -3892,8 +3984,8 @@ export default function HomePage() {
               const existingBucket = isPlainObject(mergedDaily[scope]) ? mergedDaily[scope] : {};
               const mergedBucket = { ...existingBucket };
               Object.entries(bucket).forEach(([code, list]) => {
-                if (!Array.isArray(list)) return;
-                const existingList = Array.isArray(mergedBucket[code]) ? mergedBucket[code] : [];
+                if (!isArray(list)) return;
+                const existingList = isArray(mergedBucket[code]) ? mergedBucket[code] : [];
                 const existingByDate = new Map(existingList.map((item) => [item.date, item]));
                 list.forEach((item) => {
                   if (!item || !item.date || !Number.isFinite(item.earnings)) return;
@@ -3927,21 +4019,13 @@ export default function HomePage() {
     }
   };
 
-  const isAnyModalOpen = useIsAnyModalOpen();
-
-  // 用 ref 同步 isAnyModalOpen，避免 scroll listener 因任意弹窗开关而频繁重注册
-  const isAnyModalOpenRef = useRef(false);
-  useEffect(() => {
-    isAnyModalOpenRef.current = isAnyModalOpen;
-  }, [isAnyModalOpen]);
-
   useEffect(() => {
     if (!isMobile || mainTab !== 'home') return;
 
     let ticking = false;
     const handleScroll = () => {
-      // 从 ref 读取，无需将 isAnyModalOpen 加入 deps，listener 不再因弹窗变化重注册
-      if (isAnyModalOpenRef.current) return;
+      // 如果 body 已经被锁定了滚动（说明有弹窗打开），直接忽略滚动事件
+      if (document.body.style.overflow === 'hidden') return;
       if (!ticking) {
         requestAnimationFrame(() => {
           const currentScrollY = window.scrollY;
@@ -3966,7 +4050,7 @@ export default function HomePage() {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isMobile, mainTab]); // isAnyModalOpen 已移至 ref，不再触发重注册
+  }, [isMobile, mainTab]);
 
   useEffect(() => {
     if (!isMobile || mainTab !== 'home') {
@@ -4170,6 +4254,7 @@ export default function HomePage() {
         valuationSeries,
         collapsedCodes,
         collapsedTrends,
+        collapsedValuationTrends,
         collapsedEarnings,
         transactions: transactionsForTab,
         theme,
@@ -4185,6 +4270,7 @@ export default function HomePage() {
         onTodayPercentModeToggle: toggleTodayPercentMode,
         onToggleCollapse: toggleCollapse,
         onToggleTrendCollapse: toggleTrendCollapse,
+        onToggleValuationTrendCollapse: toggleValuationTrendCollapse,
         onToggleEarningsCollapse: toggleEarningsCollapse,
         masked: maskAmounts,
         layoutMode: 'drawer',
@@ -4193,7 +4279,8 @@ export default function HomePage() {
         onFundTagsClick: openFundTagsEdit,
         fundExtraData: fundExtraDataByCode[fund.code] || fund.fundExtraData,
         groupTotalHoldingAmount,
-        hasPending: pendingCodesForTab.has(fund.code)
+        hasPending: pendingCodesForTab.has(fund.code),
+        userId: user?.id
       };
     },
     [
@@ -4208,6 +4295,7 @@ export default function HomePage() {
       valuationSeries,
       collapsedCodes,
       collapsedTrends,
+      collapsedValuationTrends,
       collapsedEarnings,
       transactionsForTab,
       theme,
@@ -4222,12 +4310,14 @@ export default function HomePage() {
       toggleTodayPercentMode,
       toggleCollapse,
       toggleTrendCollapse,
+      toggleValuationTrendCollapse,
       toggleEarningsCollapse,
       maskAmounts,
       openFundTagsEdit,
       fundExtraDataByCode,
       groupTotalHoldingAmount,
-      pendingCodesForTab
+      pendingCodesForTab,
+      user?.id
     ]
   );
 
@@ -4249,6 +4339,7 @@ export default function HomePage() {
     handleSaveFundTags,
     handleAddPoolTag,
     handleDeleteGlobalTag,
+    handleUpdateGlobalTag,
     getTagUsageLabels,
     handleMoveFunds,
     handleMergeAllGroupTransactionsToCurrent,
@@ -4306,7 +4397,7 @@ export default function HomePage() {
     setTempSeconds,
     containerWidth,
     setContainerWidth,
-    importMsg: typeof importMsg === 'string' ? importMsg : '',
+    importMsg: isString(importMsg) ? importMsg : '',
     saveSettings,
     exportLocalData,
     handleResetContainerWidth,
@@ -4649,6 +4740,16 @@ export default function HomePage() {
                             </motion.button>
                           ))}
                         </AnimatePresence>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button className="icon-button add-group-btn" onClick={() => setGroupModalOpen(true)}>
+                              <PlusIcon width="16" height="16" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>新增分组</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </div>
                     {groups.length > 0 && (
@@ -4663,16 +4764,6 @@ export default function HomePage() {
                         </TooltipContent>
                       </Tooltip>
                     )}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button className="icon-button add-group-btn" onClick={() => setGroupModalOpen(true)}>
-                          <PlusIcon width="16" height="16" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>新增分组</p>
-                      </TooltipContent>
-                    </Tooltip>
                   </div>
 
                   <div
@@ -4979,6 +5070,7 @@ export default function HomePage() {
                             valuationSeries={valuationSeries}
                             collapsedCodes={collapsedCodes}
                             collapsedTrends={collapsedTrends}
+                            collapsedValuationTrends={collapsedValuationTrends}
                             collapsedEarnings={collapsedEarnings}
                             transactionsForTab={transactionsForTab}
                             theme={theme}
@@ -4992,6 +5084,7 @@ export default function HomePage() {
                             toggleTodayPercentMode={toggleTodayPercentMode}
                             toggleCollapse={toggleCollapse}
                             toggleTrendCollapse={toggleTrendCollapse}
+                            toggleValuationTrendCollapse={toggleValuationTrendCollapse}
                             toggleEarningsCollapse={toggleEarningsCollapse}
                             fundTagListsByCode={fundTagListsByCode}
                             groupTotalHoldingAmount={groupTotalHoldingAmount}
@@ -5059,6 +5152,88 @@ export default function HomePage() {
                     数据源：实时估值与重仓直连东方财富，仅供个人学习及参考使用。数据可能存在延迟，不作为任何投资建议
                   </p>
                   <p style={{ marginBottom: 12 }}>注：估算数据与真实结算数据会有1%左右误差，非股票型基金误差较大</p>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      opacity: 0.8,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    <p style={{ margin: 0 }}>
+                      遇到任何问题或需求建议可
+                      <button
+                        className="link-button"
+                        onClick={() => {
+                          if (!user?.id) {
+                            sonnerToast.error('请先登录后再提交反馈');
+                            return;
+                          }
+                          setFeedbackNonce((n) => n + 1);
+                          setFeedbackOpen(true);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          textDecoration: 'underline',
+                          fontSize: 'inherit',
+                          fontWeight: 600
+                        }}
+                      >
+                        点此提交反馈
+                      </button>
+                      ，或
+                      <button
+                        className="link-button"
+                        onClick={() => _ms({ weChatOpen: true })}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          textDecoration: 'underline',
+                          fontSize: 'inherit',
+                          fontWeight: 600
+                        }}
+                      >
+                        加入微信用户支持群
+                      </button>
+                    </p>
+                    <button
+                      onClick={() => setDonateOpen(true)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--muted)',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--primary)';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--muted)';
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <span>☕</span>
+                      <span>点此请作者喝杯咖啡</span>
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -5105,6 +5280,7 @@ export default function HomePage() {
           }}
           onSponsorSupport={() => setDonateOpen(true)}
           onAIAnalysis={() => setMainTab('ai')}
+          onOpenWeChat={() => _ms({ weChatOpen: true })}
         />
       )}
       {/* 弹框渲染层 - 独立组件，订阅 useModalStore，不触发 page.jsx 重渲染 */}

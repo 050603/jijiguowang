@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { CloseIcon } from './Icons';
+import { Info } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DatePicker, NumericInput } from './Common';
 import { fetchSmartFundNetValueBackward } from '../api/fund';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { formatMoney } from '@/lib/utils';
 
 const format2 = (v) => {
   const n = Number(v);
@@ -78,7 +81,7 @@ export default function FundConvertModal({
     if (!open) onClose?.();
   };
 
-  const hintMax = maxOut > 0 ? `最多可转出 ${format2(maxOut)}` : '暂无可转出金额';
+  const hintMax = maxOut > 0 ? `最多可转出 ${formatMoney(maxOut)}` : '暂无可转出金额';
   const refStartDate = useMemo(() => {
     const d = dayjs(confirmDate, 'YYYY-MM-DD', true);
     if (!d.isValid()) return null;
@@ -133,7 +136,7 @@ export default function FundConvertModal({
     <Dialog open onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="glass card modal"
+        className="glass card modal gap-0"
         overlayClassName="modal-overlay"
         onPointerDownOutside={(event) => {
           if (nestedModalOpen || Date.now() < ignoreDialogCloseUntilRef.current) event.preventDefault();
@@ -161,6 +164,11 @@ export default function FundConvertModal({
             <CloseIcon width="20" height="20" />
           </button>
         </div>
+
+        <Alert style={{ marginBottom: 16, flexShrink: 0 }} variant="info">
+          <Info className="h-4 w-4" />
+          <AlertDescription>需要基金转换完成后再添加</AlertDescription>
+        </Alert>
 
         <div className="scrollbar-y-styled" style={{ overflowY: 'auto', paddingRight: 4, flex: 1 }}>
           <div style={{ marginBottom: 16 }}>

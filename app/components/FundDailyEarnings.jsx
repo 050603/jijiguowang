@@ -11,9 +11,10 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { isNumber } from 'lodash';
+import { isArray, isNumber } from 'lodash';
 import FundDailyEarningsDetailModal from './FundDailyEarningsDetailModal';
 import { Tooltip as UITooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { formatMoney } from '@/lib/utils';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTooltip, Filler);
 
@@ -61,7 +62,7 @@ export default function FundDailyEarnings({ series = [], theme = 'dark', masked 
   );
 
   const filteredSeries = useMemo(() => {
-    if (!Array.isArray(series) || series.length === 0) return [];
+    if (!isArray(series) || series.length === 0) return [];
     if (range === 'all') return series;
 
     const cfg = ranges.find((r) => r.value === range);
@@ -89,7 +90,7 @@ export default function FundDailyEarnings({ series = [], theme = 'dark', masked 
     if (!filteredSeries.length) return 0;
     return filteredSeries.reduce((sum, d) => {
       const v = d?.earnings;
-      return typeof v === 'number' && Number.isFinite(v) ? sum + v : sum;
+      return isNumber(v) && Number.isFinite(v) ? sum + v : sum;
     }, 0);
   }, [filteredSeries]);
 
@@ -315,7 +316,7 @@ export default function FundDailyEarnings({ series = [], theme = 'dark', masked 
               color: masked ? 'inherit' : totalEarnings >= 0 ? chartColors.danger : chartColors.success
             }}
           >
-            {masked ? '***' : `${totalEarnings >= 0 ? '+' : '-'}${Math.abs(totalEarnings).toFixed(2)}`}
+            {masked ? '***' : `${totalEarnings >= 0 ? '+' : '-'}${formatMoney(Math.abs(totalEarnings))}`}
           </span>
         </span>
       </div>
@@ -367,16 +368,16 @@ export default function FundDailyEarnings({ series = [], theme = 'dark', masked 
           <tbody>
             {visibleRows.map((row, idx) => {
               const v = row?.earnings;
-              const isValid = typeof v === 'number' && Number.isFinite(v);
+              const isValid = isNumber(v) && Number.isFinite(v);
               const sign = isValid && v > 0 ? '+' : isValid && v < 0 ? '-' : '';
               const cls = !isValid || masked ? '' : v > 0 ? 'up' : v < 0 ? 'down' : '';
-              const text = masked ? '***' : isValid ? `${sign}${Math.abs(v).toFixed(2)}` : '—';
+              const text = masked ? '***' : isValid ? `${sign}${formatMoney(Math.abs(v))}` : '—';
               const rv = row?.rate;
               const snapshotCost = Number(row?.baseCostAmount);
               const derivedRate =
                 isValid && Number.isFinite(snapshotCost) && snapshotCost > 0 ? (v / snapshotCost) * 100 : null;
-              const rateValue = typeof rv === 'number' && Number.isFinite(rv) ? rv : derivedRate;
-              const rateValid = typeof rateValue === 'number' && Number.isFinite(rateValue);
+              const rateValue = isNumber(rv) && Number.isFinite(rv) ? rv : derivedRate;
+              const rateValid = isNumber(rateValue) && Number.isFinite(rateValue);
               const rateSign = rateValid && rateValue > 0 ? '+' : '';
               const rateCls = masked || !rateValid ? '' : rateValue > 0 ? 'up' : rateValue < 0 ? 'down' : '';
               const rateText = masked ? '***' : rateValid ? `${rateSign}${rateValue.toFixed(2)}%` : '—';
