@@ -34,3 +34,12 @@ export const ocrDailyRemaining = (userId) => ['ocrDailyRemaining', String(userId
 
 /** @param {string} fundCode */
 export const fundConfirmDays = (fundCode) => ['fundConfirmDays', String(fundCode).trim()];
+
+/** @param {string} fundCode @param {string} gztime @param {string} holdingsReportDate @param {boolean} useLLM */
+export const fundLlmPrediction = (fundCode, gztime, holdingsReportDate, useLLM) => [
+  'fundLlmPrediction',
+  String(fundCode).trim(),
+  String(gztime || ''),
+  String(holdingsReportDate || ''),
+  Boolean(useLLM)
+];
