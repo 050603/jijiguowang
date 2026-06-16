@@ -29,6 +29,7 @@ import {
   buildPortfolioSnapshot
 } from '../api/ai';
 import { fetchHotSectorsFromEastmoney } from '../api/fund';
+import FundPredictionModule from './FundPredictionModule';
 import SimpleMarkdown from './SimpleMarkdown';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +37,8 @@ const TABS = [
   { id: 'portfolio', label: '持仓分析', Icon: Sparkles, desc: '给出组合诊断、预测情景和基金操作建议' },
   { id: 'market', label: '热点解读', Icon: TrendingUp, desc: '解读板块强弱、资金方向和短线风险' },
   { id: 'health', label: '健康评分', Icon: HeartPulse, desc: '评估集中度、仓位、收益结构和数据质量' },
-  { id: 'chat', label: '智能问答', Icon: MessageCircle, desc: '结合当前组合上下文回答基金问题' }
+  { id: 'chat', label: '智能问答', Icon: MessageCircle, desc: '结合当前组合上下文回答基金问题' },
+  { id: 'predict', label: '基金预测', Icon: Target, desc: 'AI 量化预测单只基金短期走势及概率' }
 ];
 
 const STORAGE_KEY = 'aiAnalysisResults';
@@ -828,6 +830,19 @@ export default function AIAnalysisTab({ funds, holdings, isActive }) {
                     <Send width={15} height={15} />
                   </button>
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'predict' && (
+              <motion.div
+                key="predict"
+                className="ai-panel-stack"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <FundPredictionModule funds={holdingFunds.map((f) => ({ code: f.code, name: f.name }))} mode="batch" />
               </motion.div>
             )}
           </AnimatePresence>

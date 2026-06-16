@@ -21,6 +21,7 @@ import FundTrendChart from '../FundTrendChart';
 import FundValuationTrendChart from '../FundValuationTrendChart';
 import FundIntradayChart from '../FundIntradayChart';
 import FundDailyEarnings from '../FundDailyEarnings';
+import FundPredictionModule from '../FundPredictionModule';
 import { ChevronIcon, SettingsIcon, StarIcon, SwitchIcon, TrashIcon, LinkIcon } from '../Icons';
 import { getTagThemeBadgeProps } from '../AddTagDialog';
 
@@ -846,6 +847,8 @@ export default function Index({
         isAdded={isAdded}
         userId={userId}
       />
+      {/* ── AI 预测模块 ── */}
+      <FundPredictionModule funds={[{ code: fundCode, name: f.name }]} mode="single" />
 
       {(() => {
         const currentSeries = f.fundValuationTimeseries?.[f.code] || valuationSeries?.[f.code];
