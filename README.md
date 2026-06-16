@@ -1,10 +1,10 @@
-# 实时基金估值 (Real-time Fund Valuation)
+# 实时基金估值 (jijiguowang)
 
 一个基于 Next.js 开发的基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
 预览地址：
 
-1. [https://fund.cc.cd/](https://fund.cc.cd/) （推荐，加速国内访问）
-2. [https://hzm0321.github.io/real-time-fund/](https://hzm0321.github.io/real-time-fund/)
+1. <https://fund.cc.cd/> （推荐，加速国内访问）
+2. <https://hzm0321.github.io/real-time-fund/>
 
 ## 📸 界面预览
 
@@ -66,18 +66,14 @@
 ### 本地开发
 
 1. 克隆仓库：
-
    ```bash
    git clone https://github.com/hzm0321/real-time-fund.git
    cd real-time-fund
    ```
-
 2. 安装依赖：
-
    ```bash
    npm install
    ```
-
 3. 配置环境变量：
    ```bash
    cp env.example .env.local
@@ -93,17 +89,17 @@
 
 注：如不使用登录、反馈或 GA 统计功能，可不设置对应变量
 
-4. 运行开发服务器：
+1. 运行开发服务器：
    ```bash
    npm run dev
    ```
-   访问 [http://localhost:3000](http://localhost:3000) 查看效果。
+   访问 <http://localhost:3000> 查看效果。
 
 ### Supabase 配置说明
 
 1. NEXT_PUBLIC_Supabase_URL 和 NEXT_PUBLIC_Supabase_ANON_KEY 获取
 
-   NEXT_PUBLIC_Supabase_URL：Supabase控制台 → Project Settings → General → Project ID  
+   NEXT_PUBLIC_Supabase_URL：Supabase控制台 → Project Settings → General → Project ID\
    NEXT_PUBLIC_Supabase_ANON_KEY： Supabase控制台 → Project Settings → API Keys → Publishable key
 
    示例：
@@ -115,7 +111,7 @@
 
 2. 邮件数量修改
 
-   Supabase 免费项目自带每小时2条邮件服务。如果觉得额度不够，可以改成自己的邮箱SMTP。修改路径在 Supabase控制台 → Authentication → Email → SMTP Settings。  
+   Supabase 免费项目自带每小时2条邮件服务。如果觉得额度不够，可以改成自己的邮箱SMTP。修改路径在 Supabase控制台 → Authentication → Email → SMTP Settings。\
    之后可在 Rate Limits ，自由修改每小时邮件数量。
 
 3. 修改接收到的邮件为验证码
@@ -142,19 +138,16 @@
      - Homepage URL：你的应用地址（如 `https://hzm0321.github.io/real-time-fund/`）
      - Authorization callback URL：`https://<your-supabase-project-id>.supabase.co/auth/v1/callback`
    - 创建后获取 **Client ID** 和 **Client Secret**
-
-   **第二步：在 Supabase 启用 GitHub Provider**
+     **第二步：在 Supabase 启用 GitHub Provider**
    - Supabase控制台 → Authentication → Sign In / Providers → Auth Providers → GitHub
    - 开启 **GitHub** 开关
    - 填入 GitHub OAuth App 的 **Client ID** 和 **Client Secret**
    - 点击 **Save** 保存
-
-   **第三步：配置站点 URL（重要）**
+     **第三步：配置站点 URL（重要）**
    - Supabase控制台 → Authentication → URL Configuration
    - **Site URL**：设置为你的应用主域名（如 `https://hzm0321.github.io/`）
    - **Redirect URLs**：添加你的应用完整路径（如 `https://hzm0321.github.io/real-time-fund/`）
-
-   配置完成后，用户即可通过 GitHub 账号一键登录。
+     配置完成后，用户即可通过 GitHub 账号一键登录。
 
 7. 执行数据库初始化 SQL
 
@@ -164,58 +157,51 @@
    - Supabase控制台 → SQL Editor → New query
    - 复制 `/doc/supabase.sql` 文件中的全部内容，粘贴到编辑器
    - 点击 **Run** 执行
-
-   SQL 脚本将完成以下操作：
+     SQL 脚本将完成以下操作：
    - 创建 `user_configs` 表（存储用户配置数据）
    - 启用行级安全（RLS），确保用户只能访问自己的数据
    - 创建 SELECT / INSERT / UPDATE 策略
    - 创建 `update_user_config_partial` 函数（用于增量更新配置）
    - 创建 `supabase_realtime` Publication（开启对 `user_configs` 表的实时变更监听）
-
-   执行成功后，可在 Table Editor 中看到 `user_configs` 表。
+     执行成功后，可在 Table Editor 中看到 `user_configs` 表。
 
 8. 导入关联板块数据（可选）
 
    项目支持展示基金追踪的关联板块（如指数、行业板块）及其实时涨跌幅。该功能依赖两张数据表：
    - `fund_related`：基金代码 → 关联板块名称映射
    - `fund_secid`：关联板块名称 → 东方财富 secid 映射
-
-   这两张表已在 `/doc/supabase.sql` 中创建，数据源位于 `/doc` 目录：
+     这两张表已在 `/doc/supabase.sql` 中创建，数据源位于 `/doc` 目录：
    - `fund_tracking_targets.csv`：基金追踪目标数据
    - `related_sector_secid.csv`：关联板块 secid 映射数据
-
-   **导入步骤：**
+     **导入步骤：**
    - Supabase控制台 → Table Editor → 选择 `fund_related` 表
    - 点击右上角 **Insert** → **Import data from CSV**
    - 上传 `fund_tracking_targets.csv` 文件，确认列映射后点击 **Import**
    - 同理，向 `fund_secid` 表导入 `related_sector_secid.csv` 文件
-
-   导入成功后，基金卡片将展示其追踪的关联板块及实时涨跌幅。
+     导入成功后，基金卡片将展示其追踪的关联板块及实时涨跌幅。
 
 9. 部署 Supabase Edge Function（可选）
 
    本项目提供了以下两个云端函数（Edge Function），用于隐藏 API Key 并避免浏览器跨域请求限制：
    - **`analyze-fund`**：用于 OCR 识别基金截图并提取基金代码。依赖第三方模型接口，大模型服务赞助商为 [AINX](https://api.ainx.cc/)。
    - **`fund-valuation-ranking`**：作为天天基金估值排行 API 的代理，解决跨域访问限制问题。
-
-   **配置步骤：**
+     **配置步骤：**
    - 需要用户已登录（函数会读取请求头 `Authorization`，并通过 `supabase.auth.getUser()` 校验 JWT）
    - 进入 **Supabase 控制台** → 选择你的项目
    - 左侧菜单找到 **Project Settings**（项目设置）
    - 点击 **Edge Functions** 选项卡
-   - **部署 `analyze-fund` 函数（v2版本新增）：**
+   - **部署** **`analyze-fund`** **函数（v2版本新增）：**
      - 在 **Functions** 区域点击 **Develop a new function** → **Via Editor**
      - 输入函数名称 `analyze-fund`和复制 `doc/edgeFunction/analyze-fund.ts` 内容到编辑器中，点击 **Create**
      - 到该函数的 Settings 页，取消 **Verify JWT with legacy secret** 选项
      - 在 **Secrets** 区域点击 **Add a new secret**
      - Name 填入 `AINX_API_KEY`，Value 填入你从 [AINX 控制台](https://console.ainx.cc/token) 申请的 Key
      - 点击 **保存** 即可
-   - **部署 `fund-valuation-ranking` 函数：**
+   - **部署** **`fund-valuation-ranking`** **函数：**
      - 返回 **Edge Functions** 选项卡，在 **Functions** 区域点击 **Develop a new function** → **Via Editor**
      - 输入函数名称 `fund-valuation-ranking`和复制 `doc/edgeFunction/fund-valuation-ranking.ts` 内容到编辑器中，点击 **Create**
      - 到该函数的 Settings 页，取消 **Verify JWT with legacy secret** 选项
-
-   **常见排查：**
+       **常见排查：**
    - 401 Unauthorized：说明当前未登录或未携带用户 JWT（先完成 Supabase 登录流程）
    - 500 / "模型未返回合法 JSON"：通常是第三方模型接口返回格式异常或 Key 无效
 
@@ -255,7 +241,7 @@ docker build -t real-time-fund --build-arg NEXT_PUBLIC_SUPABASE_URL=xxx --build-
 # 或依赖同目录 .env：docker compose build
 ```
 
-2. 启动容器
+1. 启动容器
 
 ```bash
 # 若构建时未写入配置，可在此注入（与 --env-file .env 二选一）
@@ -274,24 +260,20 @@ docker compose up -d
 镜像已发布至 Docker Hub，可直接拉取运行，无需本地构建。
 
 1. **拉取镜像**
-
    ```bash
    docker pull hzm0321/real-time-fund:latest
    ```
-
-2. **启动容器**  
-   访问 [http://localhost:3000](http://localhost:3000) 即可使用。
-
+2. **启动容器**\
+   访问 <http://localhost:3000> 即可使用。
    ```bash
    docker run -d -p 3000:3000 --name real-time-fund --restart always hzm0321/real-time-fund:latest
    ```
-
-3. **使用自定义环境变量（运行时替换）**  
+3. **使用自定义环境变量（运行时替换）**\
    镜像内已预置占位符，启动时通过环境变量即可覆盖，无需重新构建。例如使用本地 `.env`：
    ```bash
    docker run -d -p 3000:3000 --name real-time-fund --restart always --env-file .env hzm0321/real-time-fund:latest
    ```
-   或单独指定变量：`-e NEXT_PUBLIC_SUPABASE_URL=xxx -e NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx`。  
+   或单独指定变量：`-e NEXT_PUBLIC_SUPABASE_URL=xxx -e NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx`。\
    变量名与本地开发一致：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`、`NEXT_PUBLIC_GA_ID`、`NEXT_PUBLIC_GITHUB_LATEST_RELEASE_URL`。
 
 ## 📖 使用说明
@@ -334,5 +316,5 @@ docker compose up -d
 
 ---
 
-二开或转载需注明出处。  
+二开或转载需注明出处。\
 Made by [hzm](https://github.com/hzm0321)
