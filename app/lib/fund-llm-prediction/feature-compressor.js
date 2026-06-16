@@ -1,5 +1,7 @@
 import { isArray, isNil, isNumber, isObject, isString } from 'lodash';
 
+import { buildStockFeatures } from './stock-feature-builder';
+
 const toFiniteNumber = (value) => {
   if (isNil(value) || value === '') return null;
   const normalized = isString(value) ? value.replace(/%/g, '').replace(/,/g, '').trim() : value;
@@ -154,6 +156,7 @@ export function compressFundPredictionInput(rawData = {}) {
     const holdingsData = rawData.holdingsData || rawData.holdings || {};
     const holdingsRaw = isArray(holdingsData) ? holdingsData : holdingsData?.holdings;
     const holdings = isArray(holdingsRaw) ? holdingsRaw.slice(0, 10).map(normalizeHolding) : [];
+    const stockFeatures = buildStockFeatures(holdings, { hotSectors: rawData.hotSectors });
     if (!holdings.length) missing.push('holdings');
     if (holdings.some((item) => isNil(item.weightPct))) warnings.push('部分重仓权重缺失');
     const periodReturns = rawData.periodReturns || {};
@@ -180,8 +183,48 @@ export function compressFundPredictionInput(rawData = {}) {
       },
       technical,
       holdings,
+      stockFeatures,
       assetAllocation: normalizeAssetAllocation(holdingsData?.assetAllocation || rawData.assetAllocation),
       market: compressMarket(rawData.marketIndices || rawData.market, missing),
+      nextTradingDayFeatures: {
+        valuation: { gszzl: valuation.gszzl, gztime: valuation.gztime, valuationSource: valuation.valuationSource },
+        stockFeatures: stockFeatures.map((s) => ({
+          code: s.code,
+          name: s.name,
+          weightPct: s.weightPct,
+          todayChangePct: s.todayChangePct,
+          sectorChangePct: s.sectorChangePct,
+          sectorNetInflow: s.sectorNetInflow,
+          mainFundFlow: s.mainFundFlow
+        })),
+        market: compressMarket(rawData.marketIndices || rawData.market, missing),
+        holdingsReportDate: holdingsData?.holdingsReportDate || fundData.holdingsReportDate || null,
+        holdingsIsLastQuarter: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter),
+        isStale: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter)
+      },
+      shortTermFeatures: {
+        currentNav: technical.currentNav,
+        ma5: technical.ma5,
+        ma20: technical.ma20,
+        distanceToMa5Pct: technical.distanceToMa5Pct,
+        distanceToMa20Pct: technical.distanceToMa20Pct,
+        volatility20d: technical.volatility20d,
+        support: technical.support,
+        resistance: technical.resistance,
+        returns: {
+          week: round(periodReturns.week, 4),
+          month: round(periodReturns.month, 4),
+          month3: round(periodReturns.month3, 4)
+        },
+        consecutiveTrend: periodReturns.consecutiveTrend || null,
+        stockFeatures: stockFeatures.map((s) => ({
+          code: s.code,
+          name: s.name,
+          weightPct: s.weightPct,
+          priceTrend: s.priceTrend,
+          dataQuality: s.dataQuality
+        }))
+      },
       dataQuality: {
         holdingsReportDate: holdingsData?.holdingsReportDate || fundData.holdingsReportDate || null,
         holdingsIsLastQuarter: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter),
@@ -206,6 +249,9 @@ export function compressFundPredictionInput(rawData = {}) {
         resistance: null
       },
       holdings: [],
+      stockFeatures: [],
+      nextTradingDayFeatures: {},
+      shortTermFeatures: {},
       assetAllocation: [],
       market: {
         shanghai: null,
