@@ -2,18 +2,12 @@ import { isObject, isString } from 'lodash';
 
 import { buildFundPredictionPrompt } from './prediction-prompt';
 
-const DASHSCOPE_API_KEY = process.env.NEXT_PUBLIC_DASHSCOPE_API_KEY || 'sk-62db71312d81415b93c059eec68e7a27';
-const DASHSCOPE_BASE_URL =
-  process.env.NEXT_PUBLIC_DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DASHSCOPE_MODEL || 'qwen3.7-max';
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DASHSCOPE_MODEL || 'qwen-plus';
 
 function getProxyUrl() {
   if (typeof window === 'undefined') return null;
-  let url = DASHSCOPE_BASE_URL + '/chat/completions';
-  if (location.href.includes('39.106.185.205') || location.href.includes('jijiguowang')) {
-    url = '/jijin/api/chat';
-  }
-  return url;
+  if (location.href.includes('39.106.185.205') || location.href.includes('jijiguowang')) return '/jijin/api/chat';
+  return null;
 }
 
 const safeParseJson = (value) => {
@@ -52,8 +46,6 @@ const withTimeout = (promise, timeoutMs) => {
 
 export async function invokeFundPredictionLLM(compressedInput, options = {}) {
   const timeoutMs = Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 25000;
-  if (!DASHSCOPE_API_KEY) return null;
-
   try {
     const prompt = buildFundPredictionPrompt(compressedInput);
     const messages = [
@@ -66,20 +58,20 @@ export async function invokeFundPredictionLLM(compressedInput, options = {}) {
     ];
 
     const proxyUrl = getProxyUrl();
-    const url = proxyUrl || `${DASHSCOPE_BASE_URL}/chat/completions`;
+    const url = proxyUrl;
+    if (!url) return null;
 
     const result = await withTimeout(
       fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${DASHSCOPE_API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           model: DEFAULT_MODEL,
           messages,
           temperature: 0.3,
-          max_tokens: 2048,
+          max_tokens: 4096,
           stream: false
         })
       }),

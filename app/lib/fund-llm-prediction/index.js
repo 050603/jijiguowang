@@ -4,7 +4,8 @@ import {
   fetchFundHoldings,
   fetchFundPeriodReturns,
   fetchFundValuationTrend,
-  fetchMarketIndices
+  fetchMarketIndices,
+  fetchHotSectorsFromEastmoney
 } from '@/app/api/fund';
 import { getQueryClient } from '@/app/lib/get-query-client';
 import * as qk from '@/app/lib/query-keys';
@@ -14,6 +15,7 @@ import { generateFallbackPrediction } from './fallback-prediction';
 import { invokeFundPredictionLLM } from './llm-prediction-client';
 import { buildFundPredictionPrompt } from './prediction-prompt';
 import { validateAndRepairPredictionResult } from './result-validator';
+import { recordPredictionHistory, getPredictionHistory } from './prediction-history';
 
 const settleValue = (results, index, fallback) =>
   results[index]?.status === 'fulfilled' ? results[index].value : fallback;
@@ -24,13 +26,14 @@ const wrapResult = (input, prediction, source) => ({
   fund: input?.fund || { code: '', name: '' },
   collectedAt: input?.collectedAt || new Date().toISOString(),
   input,
-  prediction: prediction.prediction,
+  horizons: prediction.horizons,
+  prediction: prediction.horizons?.nextTradingDay,
   components: prediction.components,
+  stockFeatures: prediction.stockFeatures || input?.stockFeatures || [],
   stockPredictions: prediction.stockPredictions,
-  reasons: prediction.reasons,
-  risks: prediction.risks,
+  rebalanceAdvice: prediction.rebalanceAdvice,
   summary: prediction.summary,
-  dataQuality: input?.dataQuality || { missing: [], warnings: [] },
+  dataQuality: prediction.dataQuality || input?.dataQuality || { missing: [], warnings: [] },
   source
 });
 
@@ -41,7 +44,8 @@ async function collectRawData(code) {
     fetchFundPeriodReturns(code),
     fetchFundHistory(code, '3m'),
     fetchMarketIndices(),
-    fetchFundValuationTrend(code, '3m')
+    fetchFundValuationTrend(code, '3m'),
+    fetchHotSectorsFromEastmoney()
   ]);
   return {
     code,
@@ -62,7 +66,8 @@ async function collectRawData(code) {
     }),
     history: settleValue(results, 3, []),
     marketIndices: settleValue(results, 4, []),
-    valuationTrend: settleValue(results, 5, [])
+    valuationTrend: settleValue(results, 5, []),
+    hotSectors: settleValue(results, 6, [])
   };
 }
 
@@ -88,15 +93,20 @@ export async function predictFundWithLLM(code, options = {}) {
       input?.fund?.code || normalizedCode,
       input?.valuation?.gztime,
       input?.dataQuality?.holdingsReportDate,
-      useLLM
+      useLLM,
+      'dual',
+      input?.technical?.ma5,
+      input?.technical?.ma20
     );
-    return await qc.fetchQuery({
+    const result = await qc.fetchQuery({
       queryKey: key,
       queryFn: () => computePrediction(input, { ...options, useLLM }),
       staleTime: getPredictionStaleTime(),
       gcTime: 30 * 60 * 1000,
       retry: false
     });
+    recordPredictionHistory(result);
+    return result;
   } catch {
     const fallbackInput = compressFundPredictionInput({
       code: normalizedCode,
@@ -114,5 +124,7 @@ export {
   compressFundPredictionInput,
   generateFallbackPrediction,
   invokeFundPredictionLLM,
-  validateAndRepairPredictionResult
+  validateAndRepairPredictionResult,
+  recordPredictionHistory,
+  getPredictionHistory
 };
