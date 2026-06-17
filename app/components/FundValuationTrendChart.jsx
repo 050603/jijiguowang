@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchFundValuationTrend, fetchFundHistory } from '../api/fund';
 import * as qk from '../lib/query-keys';
+import { getChartAxisAvoidRects, getChartTooltipPosition } from '../lib/chartTooltipPosition';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronIcon } from './Icons';
 import {
@@ -22,6 +23,11 @@ import { Line } from 'react-chartjs-2';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+
+const TOOLTIP_SIZE = {
+  width: 170,
+  height: 88
+};
 
 const CHART_COLORS = {
   dark: {
@@ -73,9 +79,13 @@ export default function FundValuationTrendChart({
   const clearActiveIndexRef = useRef(null);
   const [hiddenSources, setHiddenSources] = useState(() => new Set());
   const [activeIndex, setActiveIndex] = useState(null);
+  const [tooltipInfo, setTooltipInfo] = useState(null);
 
   useEffect(() => {
-    clearActiveIndexRef.current = () => setActiveIndex(null);
+    clearActiveIndexRef.current = () => {
+      setActiveIndex(null);
+      setTooltipInfo(null);
+    };
   });
 
   const chartColors = useMemo(() => getChartThemeColors(theme), [theme]);
@@ -226,7 +236,81 @@ export default function FundValuationTrendChart({
           enabled: false,
           mode: 'index',
           intersect: false,
-          external: () => {}
+          external: (context) => {
+            const { chart, tooltip } = context;
+            if (tooltip.opacity === 0) {
+              setTooltipInfo(null);
+              return;
+            }
+
+            const dataPoints = tooltip.dataPoints;
+            if (!dataPoints || dataPoints.length === 0) return;
+
+            const actualPt = dataPoints.find((p) => p.dataset.sourceKey === 'actual');
+            if (!actualPt || actualPt.raw === null || actualPt.raw === undefined) {
+              setTooltipInfo(null);
+              return;
+            }
+
+            const actualVal = actualPt.raw;
+            let closestSource = null;
+            let minAbsDiff = Infinity;
+            let closestVal = null;
+            let signedDiff = 0;
+
+            dataPoints.forEach((p) => {
+              if (p.dataset.sourceKey !== 'actual' && p.raw !== null && p.raw !== undefined) {
+                const absDiff = Math.abs(p.raw - actualVal);
+                if (absDiff < minAbsDiff) {
+                  minAbsDiff = absDiff;
+                  signedDiff = p.raw - actualVal;
+                  closestSource = p.dataset;
+                  closestVal = p.raw;
+                }
+              }
+            });
+
+            if (closestSource) {
+              const x = actualPt.element.x;
+              const y = actualPt.element.y;
+              const dateStr = chart.data.labels?.[actualPt.dataIndex];
+              const yLabel = `${isNumber(actualVal) ? actualVal.toFixed(2) : actualVal}%`;
+              const position = getChartTooltipPosition({
+                anchorX: x,
+                anchorY: y,
+                tooltipWidth: TOOLTIP_SIZE.width,
+                tooltipHeight: TOOLTIP_SIZE.height,
+                chartWidth: chart.width,
+                chartHeight: chart.height,
+                chartArea: chart.chartArea,
+                avoidRects: getChartAxisAvoidRects({
+                  chart,
+                  anchorX: x,
+                  anchorY: y,
+                  xLabel: dateStr,
+                  yLabel
+                })
+              });
+
+              if (!position) {
+                setTooltipInfo(null);
+                return;
+              }
+
+              setTooltipInfo({
+                x: position.left,
+                y: position.top,
+                actualValue: actualVal,
+                actualColor: actualPt.dataset.borderColor,
+                closestLabel: closestSource.label,
+                closestColor: closestSource.borderColor,
+                closestValue: closestVal,
+                diff: signedDiff
+              });
+            } else {
+              setTooltipInfo(null);
+            }
+          }
         }
       },
       scales: {
@@ -526,6 +610,65 @@ export default function FundValuationTrendChart({
 
         {processedData.labels.length > 0 && (
           <Line ref={chartRef} data={processedData} options={options} plugins={plugins} />
+        )}
+
+        {tooltipInfo && (
+          <div
+            className="glass"
+            style={{
+              position: 'absolute',
+              left: tooltipInfo.x,
+              top: tooltipInfo.y,
+              pointerEvents: 'none',
+              padding: '12px',
+              borderRadius: '8px',
+              zIndex: 50,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              background: theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : undefined,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              width: TOOLTIP_SIZE.width,
+              transition: 'left 0.1s ease, top 0.1s ease, opacity 0.2s',
+              color: 'var(--text-primary)',
+              opacity: 1
+            }}
+          >
+            {/* Top section: Closest source label */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+              <span style={{ color: 'var(--muted, #888)' }}>最接近数据源</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: 10, height: 2, borderRadius: 999, backgroundColor: tooltipInfo.closestColor }} />
+                <span className="muted" style={{ fontSize: '11px' }}>
+                  {tooltipInfo.closestLabel}
+                </span>
+              </span>
+            </div>
+
+            {/* Dashed Divider */}
+            <div
+              style={{
+                borderTop: '1px dashed var(--glass-border, rgba(128,128,128,0.15))',
+                width: '100%',
+                margin: '0'
+              }}
+            />
+
+            {/* Bottom section: Diff */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+              <span style={{ color: 'var(--muted, #888)' }}>差值</span>
+              <span
+                style={{
+                  fontFamily: 'Menlo, Monaco, monospace',
+                  fontWeight: '500',
+                  color: tooltipInfo.diff > 0 ? 'var(--danger)' : tooltipInfo.diff < 0 ? 'var(--success)' : 'inherit'
+                }}
+              >
+                {tooltipInfo.diff > 0 ? '+' : ''}
+                {tooltipInfo.diff.toFixed(2)}%
+              </span>
+            </div>
+          </div>
         )}
       </div>
 

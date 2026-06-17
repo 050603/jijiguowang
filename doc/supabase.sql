@@ -199,7 +199,7 @@ CREATE TABLE public.fund_topic (
   sector_type text null,
   sector_id text null,
   sector_name text null,
-  "updateFrequency" text null,
+  update_frequency text null,
   net_inflow bigint null,
   change_pct real null,
   CONSTRAINT fund_topic_pkey PRIMARY KEY (id),

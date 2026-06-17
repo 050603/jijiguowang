@@ -125,7 +125,7 @@ const FundListView = React.memo(function FundListView({
                     masked={maskAmounts}
                     getFundCardProps={getFundCardPropsForRow}
                     onFundTagsClick={openFundTagsEdit}
-                    fundExtraData={fundExtraDataByCode}
+                    fundExtraDataByCode={fundExtraDataByCode}
                   />
                 </div>
               </div>
@@ -169,7 +169,7 @@ const FundListView = React.memo(function FundListView({
               getFundCardProps={getFundCardPropsForRow}
               masked={maskAmounts}
               onFundTagsClick={openFundTagsEdit}
-              fundExtraData={fundExtraDataByCode}
+              fundExtraDataByCode={fundExtraDataByCode}
             />
           )}
 

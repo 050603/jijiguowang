@@ -4,6 +4,8 @@ import AnalyticsGate from './components/AnalyticsGate';
 import KeepScreenAwake from './components/KeepScreenAwake';
 import PwaRegister from './components/PwaRegister';
 import ThemeColorSync from './components/ThemeColorSync';
+import ClientErrorBoundary from './components/ClientErrorBoundary';
+import GlobalClientErrorHandler from './components/GlobalClientErrorHandler';
 import { QueryClientProviderWrapper } from './providers/query-client-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import packageJson from '../package.json';
@@ -41,9 +43,14 @@ export default function RootLayout({ children }) {
         <PwaRegister />
         <AnalyticsGate GA_ID={GA_ID} />
         <QueryClientProviderWrapper>
-          <TooltipProvider>{children}</TooltipProvider>
+          <TooltipProvider>
+            <ClientErrorBoundary toastTitle="页面渲染异常" toastId="app-render-error" closeModals>
+              {children}
+            </ClientErrorBoundary>
+          </TooltipProvider>
         </QueryClientProviderWrapper>
         <Toaster />
+        <GlobalClientErrorHandler />
       </body>
     </html>
   );

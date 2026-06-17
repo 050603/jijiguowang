@@ -84,13 +84,52 @@ export default function FundDataSourceSelector({ fund, onClose, onSelect }) {
 
       if (bestResult) {
         setBestSource(bestResult.bestSource);
-        setIsYesterdayAccuracy(bestResult.isYesterdayAccuracy);
-        setIsTodayAccuracy(bestResult.isTodayAccuracy || false);
-        if (bestResult.diffs) {
-          setAccuracyDiffs(bestResult.diffs);
-        } else if (bestResult.diff != null && bestResult.bestSource != null) {
-          // Fallback for older edge function responses
-          setAccuracyDiffs({ [bestResult.bestSource]: bestResult.diff });
+
+        // 判断今日净值是否已公布：jzrq 为今天时，用实时估值数据计算预测误差
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isTodayNav = fund.jzrq === todayStr && actualZzl != null;
+
+        if (isTodayNav) {
+          // 今日净值已公布 —— 用实时估值计算误差，保证与用户看到的估值一致
+          const rtDiffs = {};
+          [v1, v2, v3].forEach((v, i) => {
+            if (v?.gszzl != null && Number.isFinite(Number(v.gszzl))) {
+              rtDiffs[String(i + 1)] = Math.abs(Number(v.gszzl) - actualZzl);
+            }
+          });
+          if (Object.keys(rtDiffs).length > 0) {
+            // 从实时误差中找出误差最小的数据源
+            let minDiff = Infinity;
+            let bestSrc = null;
+            for (const [src, d] of Object.entries(rtDiffs)) {
+              if (d < minDiff) {
+                minDiff = d;
+                bestSrc = Number(src);
+              }
+            }
+            setBestSource(bestSrc);
+            setIsYesterdayAccuracy(false);
+            setIsTodayAccuracy(true);
+            setAccuracyDiffs(rtDiffs);
+          } else {
+            // 实时估值不可用，回退到边缘函数结果
+            setIsYesterdayAccuracy(bestResult.isYesterdayAccuracy);
+            setIsTodayAccuracy(bestResult.isTodayAccuracy || false);
+            if (bestResult.diffs) {
+              setAccuracyDiffs(bestResult.diffs);
+            }
+          }
+        } else {
+          // 净值未更新（交易时段等），使用边缘函数的历史比对结果
+          setIsYesterdayAccuracy(bestResult.isYesterdayAccuracy);
+          setIsTodayAccuracy(bestResult.isTodayAccuracy || false);
+          if (bestResult.diffs) {
+            setAccuracyDiffs(bestResult.diffs);
+          } else if (bestResult.diff != null && bestResult.bestSource != null) {
+            // Fallback for older edge function responses
+            setAccuracyDiffs({ [bestResult.bestSource]: bestResult.diff });
+          }
         }
       }
 

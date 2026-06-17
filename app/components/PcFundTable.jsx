@@ -3043,12 +3043,29 @@ const PcFundTable = memo(function PcFundTable({
 });
 
 function FundDetailDialog({ blockDialogClose, cardDialogRow, getFundCardProps, setCardDialogRow }) {
+  const isAnySubModalOpen = useModalStore(
+    (s) =>
+      s.dataSourceModal.open ||
+      s.tradeModal.open ||
+      s.holdingModal.open ||
+      s.dcaModal.open ||
+      s.dividendMethodModal.open ||
+      s.convertModal.open ||
+      s.fundTagsEdit.open ||
+      s.historyModal.open ||
+      s.actionModal.open ||
+      s.selectHoldingGroupModal.open ||
+      s.addHistoryModal.open
+  );
+
+  const finalBlockClose = blockDialogClose || isAnySubModalOpen;
+
   return (
     <Dialog
       open
       onOpenChange={(open) => {
         if (!open && document.body.hasAttribute('data-photo-viewer-open')) return;
-        if (!open && !blockDialogClose) setCardDialogRow(null);
+        if (!open && !finalBlockClose) setCardDialogRow(null);
       }}
     >
       <DialogContent
@@ -3058,7 +3075,7 @@ function FundDetailDialog({ blockDialogClose, cardDialogRow, getFundCardProps, s
             e.preventDefault();
             return;
           }
-          if (blockDialogClose) e.preventDefault();
+          if (finalBlockClose) e.preventDefault();
         }}
         onEscapeKeyDown={(e) => {
           if (document.body.hasAttribute('data-photo-viewer-open')) {

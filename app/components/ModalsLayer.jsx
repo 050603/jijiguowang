@@ -45,6 +45,7 @@ import MyEarningsCalendarPage from './MyEarningsCalendarPage';
 import { DEFAULT_FUND_TAG_THEME, DCA_SCOPE_GLOBAL } from '@/app/constants';
 import { migrateDcaPlansToScoped } from '../lib/fundHelpers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import ClientErrorBoundary from './ClientErrorBoundary';
 
 /**
  * ModalsLayer — 将所有弹框渲染从 page.jsx 抽离到独立组件。
@@ -57,6 +58,23 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
  * @param {{ current: Object }} props.callbacksRef - 页面级回调与数据的 ref 封装
  */
 export default function ModalsLayer({ callbacksRef }) {
+  const modalErrorResetKey = useModalStore((s) => s.modalErrorResetKey);
+
+  return (
+    <ClientErrorBoundary
+      fallback={null}
+      resetKey={modalErrorResetKey}
+      toastTitle="弹框打开异常"
+      toastId="modal-render-error"
+      closeModals
+      onReset={() => useModalStore.getState().closeAllModals?.()}
+    >
+      <ModalsLayerContent callbacksRef={callbacksRef} />
+    </ClientErrorBoundary>
+  );
+}
+
+function ModalsLayerContent({ callbacksRef }) {
   const cb = callbacksRef;
 
   // ========== Modal 开关状态订阅 ==========

@@ -92,3 +92,4 @@ fabric.properties
 # CLI
 cli/
 .agents/
+/CLI.md
