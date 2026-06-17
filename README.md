@@ -1,6 +1,19 @@
 # 实时基金估值 (jijiguowang)
 
-一个基于 Next.js 开发的基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
+一个基于 Next.js 开发的基金估值与重仓股实时追踪工具。
+
+## 🔄 快速更新
+
+```bash
+# 1. 推送代码（GitHub Actions 自动构建部署到 Pages）
+git push jijiguowang main
+
+# 2. 本地构建测试
+npm run build
+# 静态文件输出到 out/ 目录
+```
+
+采用玻璃拟态设计（Glassmorphism），支持移动端适配。
 预览地址：
 
 1. <https://fund.cc.cd/> （推荐，加速国内访问）
