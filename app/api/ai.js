@@ -1,10 +1,9 @@
 import dayjs from 'dayjs';
 import { isArray, isPlainObject } from 'lodash';
 
-const DASHSCOPE_API_KEY = process.env.NEXT_PUBLIC_DASHSCOPE_API_KEY || 'sk-62db71312d81415b93c059eec68e7a27';
-const DASHSCOPE_BASE_URL =
-  process.env.NEXT_PUBLIC_DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DASHSCOPE_MODEL || 'qwen3.7-max';
+const DASHSCOPE_API_KEY = '';
+const DASHSCOPE_BASE_URL = '';
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DASHSCOPE_MODEL || 'qwen-plus';
 
 const numberOrNull = (value) => {
   const n = Number(value);
@@ -210,8 +209,8 @@ function extractJson(content) {
  * @returns {Promise<string>}
  */
 function getProxyUrl() {
-  // 浏览器端直接请求阿里云，不经过服务器代理
-  // 这样每个设备都不需要额外配置网络规则
+  if (typeof window === 'undefined') return null;
+  if (location.href.includes('39.106.185.205') || location.href.includes('jijiguowang')) return '/jijin/api/chat';
   return null;
 }
 
@@ -220,19 +219,18 @@ export async function callDashscopeChat(messages, options = {}) {
   const temperature = options.temperature ?? 0.7;
   const maxTokens = options.maxTokens ?? 4096;
 
-  if (!DASHSCOPE_API_KEY) {
-    throw new Error('未配置 Dashscope API Key');
-  }
-
   const isBrowser = typeof window !== 'undefined';
   const proxyUrl = getProxyUrl();
+  if (!proxyUrl && !DASHSCOPE_API_KEY) {
+    throw new Error('未配置后端 AI 代理，已停止在浏览器端直连 LLM');
+  }
 
   try {
     const res = await fetch(proxyUrl || `${DASHSCOPE_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${DASHSCOPE_API_KEY}`
+        ...(DASHSCOPE_API_KEY ? { Authorization: `Bearer ${DASHSCOPE_API_KEY}` } : {})
       },
       body: JSON.stringify({
         model,
@@ -313,6 +311,66 @@ JSON Schema：
 }`;
 }
 
+function sanitizeAdviceText(text) {
+  return String(text || '')
+    .replaceAll('必涨', '偏积极')
+    .replaceAll('必跌', '偏谨慎')
+    .replaceAll('稳赚', '风险收益不确定')
+    .replaceAll('买入', '关注')
+    .replaceAll('卖出', '调整')
+    .replaceAll('满仓', '高仓位')
+    .replaceAll('清仓', '降低仓位');
+}
+
+export function validatePortfolioAdvice(raw, snapshot) {
+  if (!isPlainObject(raw) || !snapshot) return raw;
+  const byCode = new Map((snapshot.rows || []).map((row) => [String(row.code), row]));
+  const fundAnalysis = isArray(raw.fundAnalysis) ? raw.fundAnalysis : [];
+  const used = new Set(fundAnalysis.map((item) => String(item?.code || '')));
+  const missingRows = (snapshot.rows || []).filter((row) => !used.has(String(row.code)));
+  const normalized = fundAnalysis.map((item) => {
+    const code = String(item?.code || '');
+    const row = byCode.get(code);
+    let action = sanitizeAdviceText(item?.action || '观望');
+    const confidence = Math.max(0, Math.min(1, Number(item?.confidence) || 0));
+    if (confidence < 0.45) action = '观望';
+    if (snapshot.availableAmount == null && action.includes('加仓')) {
+      item.amount = '未设置满仓限制，仅可作为比例/分批观察参考';
+    }
+    if (row?.weight >= 25 && action.includes('加仓')) action = '观望';
+    return {
+      ...item,
+      action,
+      amount: sanitizeAdviceText(item?.amount),
+      reason: sanitizeAdviceText(item?.reason),
+      positionAdvice: sanitizeAdviceText(item?.positionAdvice),
+      confidence,
+      riskFlags: [
+        ...(isArray(item?.riskFlags) ? item.riskFlags.map(sanitizeAdviceText) : []),
+        'AI建议仅作调仓辅助参考，不是自动交易指令'
+      ]
+    };
+  });
+  raw.fundAnalysis = [
+    ...normalized,
+    ...missingRows.map((row) => ({
+      code: row.code,
+      name: row.name,
+      action: '观望',
+      amount: '未覆盖持仓，需人工复核',
+      reason: '本地校验发现 LLM 遗漏该持仓基金',
+      positionAdvice: '保持观察',
+      confidence: 0.2,
+      urgency: 'low',
+      keyMetrics: [`当前权重${row.weight.toFixed(1)}%`],
+      riskFlags: ['LLM遗漏持仓，已由本地校验补齐']
+    }))
+  ];
+  raw.riskWarning = sanitizeAdviceText(
+    `${raw.riskWarning || ''} 本地已按仓位、集中度和置信度约束校验，所有建议均需人工确认。`
+  );
+  return raw;
+}
 /**
  * 持仓AI分析
  * @param {object} params
@@ -345,7 +403,7 @@ ${buildSnapshotText(snapshot)}
   });
 
   try {
-    return extractJson(response);
+    return validatePortfolioAdvice(extractJson(response), snapshot);
   } catch (e) {
     console.error('JSON解析失败:', e);
     return {

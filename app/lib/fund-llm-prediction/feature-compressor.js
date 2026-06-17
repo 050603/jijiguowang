@@ -1,5 +1,7 @@
 import { isArray, isNil, isNumber, isObject, isString } from 'lodash';
 
+import { buildStockFeatures } from './stock-feature-builder';
+
 const toFiniteNumber = (value) => {
   if (isNil(value) || value === '') return null;
   const normalized = isString(value) ? value.replace(/%/g, '').replace(/,/g, '').trim() : value;
@@ -66,6 +68,85 @@ const average = (values) => {
   return valid.reduce((sum, v) => sum + v, 0) / valid.length;
 };
 
+const computeReturnPct = (current, previous) => {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0) return null;
+  return ((current - previous) / previous) * 100;
+};
+
+const computeMomentum = (rows, days) => {
+  if (rows.length <= days) return null;
+  const current = rows[rows.length - 1]?.nav;
+  const previous = rows[rows.length - 1 - days]?.nav;
+  return computeReturnPct(current, previous);
+};
+
+const computeRsi = (rows, period = 14) => {
+  if (rows.length <= period) return null;
+  const recent = rows.slice(-period - 1).map((item) => item.nav);
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i < recent.length; i++) {
+    const diff = recent[i] - recent[i - 1];
+    if (diff > 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  if (gains === 0 && losses === 0) return 50;
+  if (losses === 0) return 100;
+  const rs = gains / losses;
+  return 100 - 100 / (1 + rs);
+};
+
+const ema = (values, period) => {
+  if (!isArray(values) || values.length < period) return [];
+  const k = 2 / (period + 1);
+  const result = [];
+  let prev = average(values.slice(0, period));
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) result.push(null);
+    else if (i === period - 1) result.push(prev);
+    else {
+      prev = values[i] * k + prev * (1 - k);
+      result.push(prev);
+    }
+  }
+  return result;
+};
+
+const computeMacd = (rows) => {
+  const closes = rows.map((item) => item.nav).filter((v) => Number.isFinite(v));
+  if (closes.length < 35) return { macdDif: null, macdDea: null, macdHistogram: null };
+  const ema12 = ema(closes, 12);
+  const ema26 = ema(closes, 26);
+  const dif = closes.map((_, i) => (!isNil(ema12[i]) && !isNil(ema26[i]) ? ema12[i] - ema26[i] : null));
+  const validDif = dif.filter((v) => !isNil(v));
+  const deaSeries = ema(validDif, 9);
+  const difLast = validDif[validDif.length - 1];
+  const deaLast = deaSeries[deaSeries.length - 1];
+  if (isNil(difLast) || isNil(deaLast)) return { macdDif: null, macdDea: null, macdHistogram: null };
+  return { macdDif: difLast, macdDea: deaLast, macdHistogram: (difLast - deaLast) * 2 };
+};
+
+const computeBollinger = (rows, period = 20) => {
+  const recent = rows
+    .slice(-period)
+    .map((item) => item.nav)
+    .filter((v) => Number.isFinite(v));
+  if (recent.length < period)
+    return { bollingerUpper: null, bollingerMiddle: null, bollingerLower: null, bollingerPctB: null };
+  const middle = average(recent);
+  const variance = average(recent.map((v) => (v - middle) ** 2));
+  const sd = Math.sqrt(variance);
+  const upper = middle + sd * 2;
+  const lower = middle - sd * 2;
+  const current = recent[recent.length - 1];
+  return {
+    bollingerUpper: upper,
+    bollingerMiddle: middle,
+    bollingerLower: lower,
+    bollingerPctB: upper === lower ? 0.5 : (current - lower) / (upper - lower)
+  };
+};
+
 const computeVolatility = (history, days = 20) => {
   const recent = history.slice(-days - 1);
   if (recent.length < 2) return null;
@@ -95,6 +176,8 @@ const computeTechnical = (history, fundData, missing) => {
     .slice(-20)
     .map((item) => item.nav)
     .filter((v) => Number.isFinite(v));
+  const macd = computeMacd(rows);
+  const bollinger = computeBollinger(rows, 20);
   return {
     currentNav: round(currentNav, 4),
     ma5: round(ma5, 4),
@@ -103,6 +186,18 @@ const computeTechnical = (history, fundData, missing) => {
       !isNil(currentNav) && !isNil(ma5) && ma5 !== 0 ? round(((currentNav - ma5) / ma5) * 100, 4) : null,
     distanceToMa20Pct:
       !isNil(currentNav) && !isNil(ma20) && ma20 !== 0 ? round(((currentNav - ma20) / ma20) * 100, 4) : null,
+    dailyMomentum3d: round(computeMomentum(rows, 3), 4),
+    dailyMomentum5d: round(computeMomentum(rows, 5), 4),
+    dailyMomentum10d: round(computeMomentum(rows, 10), 4),
+    rsi6: round(computeRsi(rows, 6), 4),
+    rsi14: round(computeRsi(rows, 14), 4),
+    macdDif: round(macd.macdDif, 6),
+    macdDea: round(macd.macdDea, 6),
+    macdHistogram: round(macd.macdHistogram, 6),
+    bollingerUpper: round(bollinger.bollingerUpper, 4),
+    bollingerMiddle: round(bollinger.bollingerMiddle, 4),
+    bollingerLower: round(bollinger.bollingerLower, 4),
+    bollingerPctB: round(bollinger.bollingerPctB, 4),
     volatility20d: round(computeVolatility(rows, 20), 4),
     support: recent20.length ? round(Math.min(...recent20), 4) : null,
     resistance: recent20.length ? round(Math.max(...recent20), 4) : null
@@ -154,6 +249,7 @@ export function compressFundPredictionInput(rawData = {}) {
     const holdingsData = rawData.holdingsData || rawData.holdings || {};
     const holdingsRaw = isArray(holdingsData) ? holdingsData : holdingsData?.holdings;
     const holdings = isArray(holdingsRaw) ? holdingsRaw.slice(0, 10).map(normalizeHolding) : [];
+    const stockFeatures = buildStockFeatures(holdings, { hotSectors: rawData.hotSectors });
     if (!holdings.length) missing.push('holdings');
     if (holdings.some((item) => isNil(item.weightPct))) warnings.push('部分重仓权重缺失');
     const periodReturns = rawData.periodReturns || {};
@@ -180,8 +276,64 @@ export function compressFundPredictionInput(rawData = {}) {
       },
       technical,
       holdings,
+      stockFeatures,
       assetAllocation: normalizeAssetAllocation(holdingsData?.assetAllocation || rawData.assetAllocation),
       market: compressMarket(rawData.marketIndices || rawData.market, missing),
+      nextTradingDayFeatures: {
+        valuation: { gszzl: valuation.gszzl, gztime: valuation.gztime, valuationSource: valuation.valuationSource },
+        technicalSignals: {
+          dailyMomentum3d: technical.dailyMomentum3d,
+          dailyMomentum5d: technical.dailyMomentum5d,
+          rsi6: technical.rsi6,
+          rsi14: technical.rsi14,
+          macdHistogram: technical.macdHistogram,
+          bollingerPctB: technical.bollingerPctB,
+          volatility20d: technical.volatility20d
+        },
+        stockFeatures: stockFeatures.map((s) => ({
+          code: s.code,
+          name: s.name,
+          weightPct: s.weightPct,
+          todayChangePct: s.todayChangePct,
+          sectorChangePct: s.sectorChangePct,
+          sectorNetInflow: s.sectorNetInflow,
+          mainFundFlow: s.mainFundFlow
+        })),
+        market: compressMarket(rawData.marketIndices || rawData.market, missing),
+        holdingsReportDate: holdingsData?.holdingsReportDate || fundData.holdingsReportDate || null,
+        holdingsIsLastQuarter: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter),
+        isStale: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter)
+      },
+      shortTermFeatures: {
+        currentNav: technical.currentNav,
+        ma5: technical.ma5,
+        ma20: technical.ma20,
+        distanceToMa5Pct: technical.distanceToMa5Pct,
+        distanceToMa20Pct: technical.distanceToMa20Pct,
+        volatility20d: technical.volatility20d,
+        support: technical.support,
+        resistance: technical.resistance,
+        dailyMomentum3d: technical.dailyMomentum3d,
+        dailyMomentum5d: technical.dailyMomentum5d,
+        dailyMomentum10d: technical.dailyMomentum10d,
+        rsi6: technical.rsi6,
+        rsi14: technical.rsi14,
+        macdHistogram: technical.macdHistogram,
+        bollingerPctB: technical.bollingerPctB,
+        returns: {
+          week: round(periodReturns.week, 4),
+          month: round(periodReturns.month, 4),
+          month3: round(periodReturns.month3, 4)
+        },
+        consecutiveTrend: periodReturns.consecutiveTrend || null,
+        stockFeatures: stockFeatures.map((s) => ({
+          code: s.code,
+          name: s.name,
+          weightPct: s.weightPct,
+          priceTrend: s.priceTrend,
+          dataQuality: s.dataQuality
+        }))
+      },
       dataQuality: {
         holdingsReportDate: holdingsData?.holdingsReportDate || fundData.holdingsReportDate || null,
         holdingsIsLastQuarter: Boolean(holdingsData?.holdingsIsLastQuarter || fundData.holdingsIsLastQuarter),
@@ -203,9 +355,18 @@ export function compressFundPredictionInput(rawData = {}) {
         distanceToMa20Pct: null,
         volatility20d: null,
         support: null,
-        resistance: null
+        resistance: null,
+        dailyMomentum3d: null,
+        dailyMomentum5d: null,
+        rsi6: null,
+        rsi14: null,
+        macdHistogram: null,
+        bollingerPctB: null
       },
       holdings: [],
+      stockFeatures: [],
+      nextTradingDayFeatures: {},
+      shortTermFeatures: {},
       assetAllocation: [],
       market: {
         shanghai: null,

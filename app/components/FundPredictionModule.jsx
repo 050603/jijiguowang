@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { isArray } from 'lodash';
-import { Loader2, Sparkles, TrendingDown, TrendingUp, Minus, AlertCircle, Bot, RotateCw } from 'lucide-react';
+import { Loader2, Sparkles, TrendingDown, TrendingUp, Minus, AlertCircle, RotateCw } from 'lucide-react';
 import { predictFundWithLLM } from '@/app/lib/fund-llm-prediction';
 
 const DIRECTION_CONFIG = {
@@ -26,14 +26,14 @@ function formatConfidence(value) {
   return `${(value * 100).toFixed(0)}%`;
 }
 
-function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
+function SingleFundPrediction({ fundCode, fundName, autoLoad = false, onRequestLoad }) {
   const {
     data: result,
     isLoading,
     isError,
     refetch
   } = useQuery({
-    queryKey: ['fundPrediction', fundCode],
+    queryKey: ['fundPrediction', fundCode, 'dual', true],
     queryFn: () => predictFundWithLLM(fundCode, { useLLM: true, timeoutMs: 25000 }),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -41,7 +41,8 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
     enabled: !!fundCode && autoLoad
   });
 
-  const prediction = result?.prediction;
+  const prediction = result?.horizons?.nextTradingDay || result?.prediction;
+  const shortTerm = result?.horizons?.shortTerm;
   const config = prediction?.direction ? DIRECTION_CONFIG[prediction.direction] || DIRECTION_CONFIG.uncertain : null;
   const DirectionIcon = config?.Icon || Minus;
   const isLLM = result?.source === 'llm';
@@ -49,7 +50,10 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
   if (!autoLoad) {
     return (
       <button
-        onClick={() => refetch()}
+        onClick={() => {
+          if (onRequestLoad) onRequestLoad();
+          refetch();
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -66,7 +70,7 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
         }}
       >
         <Sparkles width={12} height={12} />
-        点击预测 {fundName || fundCode}
+        点击查看双周期走势参考 {fundName || fundCode}
       </button>
     );
   }
@@ -134,6 +138,7 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
       transition={{ duration: 0.2 }}
       style={{ textAlign: 'center' }}
     >
+      <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 6 }}>次日 / 短期情景判断</div>
       {/* 方向 + 预期收益 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
         <DirectionIcon size={18} style={{ color: config?.color || 'var(--muted)' }} />
@@ -155,12 +160,15 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
           display: 'inline-block'
         }}
       >
-        {isLLM ? 'AI' : ''} {config?.label || '--'}
+        下个交易日 · {isLLM ? 'AI' : '规则'} {config?.label || '--'}
       </div>
 
       {/* 置信度 */}
       <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
-        置信度 {formatConfidence(prediction?.confidence)}
+        置信度 {formatConfidence(prediction?.confidence)} · 区间{' '}
+        {prediction?.expectedRangePct
+          ? `${formatPct(prediction.expectedRangePct[0])}~${formatPct(prediction.expectedRangePct[1])}`
+          : '--'}
       </div>
 
       {/* 概率条 */}
@@ -174,6 +182,30 @@ function SingleFundPrediction({ fundCode, fundName, autoLoad = false }) {
         </div>
       )}
 
+      {shortTerm && (
+        <div
+          style={{
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: '1px solid var(--border, rgba(255,255,255,0.08))',
+            fontSize: 11,
+            color: 'var(--muted-foreground)'
+          }}
+        >
+          短期趋势：{DIRECTION_CONFIG[shortTerm.direction]?.label || '不确定'} · 置信度{' '}
+          {formatConfidence(shortTerm.confidence)}
+          <br />
+          区间{' '}
+          {shortTerm.expectedRangePct
+            ? `${formatPct(shortTerm.expectedRangePct[0])}~${formatPct(shortTerm.expectedRangePct[1])}`
+            : '--'}
+        </div>
+      )}
+      {result?.rebalanceAdvice && (
+        <div style={{ marginTop: 6, fontSize: 10, color: 'var(--muted-foreground)' }}>
+          调仓辅助：{result.rebalanceAdvice.action} / {result.rebalanceAdvice.strength} · 需人工确认
+        </div>
+      )}
       {/* 摘要 */}
       {result?.summary && (
         <div
@@ -198,12 +230,16 @@ export default function FundPredictionModule({ funds = [], autoLoadAll = false, 
 
   const handlePredictAll = () => {
     setLoadingAll(true);
-    const newState = {};
-    funds.forEach((f) => {
-      newState[f.code] = true;
+    const list = funds.slice();
+    list.forEach((f, index) => {
+      setTimeout(
+        () => {
+          setLoadedFunds((prev) => ({ ...prev, [f.code]: true }));
+          if (index === list.length - 1) setLoadingAll(false);
+        },
+        Math.floor(index / 3) * 1200
+      );
     });
-    setLoadedFunds(newState);
-    setLoadingAll(false);
   };
 
   if (!isArray(funds) || !funds.length) {
@@ -226,7 +262,7 @@ export default function FundPredictionModule({ funds = [], autoLoadAll = false, 
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles width={16} height={16} style={{ color: 'var(--primary)' }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>AI 基金预测</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>双周期走势参考</span>
             <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>({funds.length}只)</span>
           </div>
           {!allLoaded && (
@@ -256,7 +292,7 @@ export default function FundPredictionModule({ funds = [], autoLoadAll = false, 
               ) : (
                 <>
                   <Sparkles width={12} height={12} />
-                  全部预测
+                  分批预测
                 </>
               )}
             </button>
@@ -310,6 +346,7 @@ export default function FundPredictionModule({ funds = [], autoLoadAll = false, 
                 fundCode={fund.code}
                 fundName={fund.name}
                 autoLoad={autoLoadAll || !!loadedFunds[fund.code]}
+                onRequestLoad={() => setLoadedFunds((prev) => ({ ...prev, [fund.code]: true }))}
               />
             </div>
           ))}
@@ -344,11 +381,16 @@ export default function FundPredictionModule({ funds = [], autoLoadAll = false, 
           }}
         >
           <Sparkles width="14" height="14" />
-          <span>AI 预测</span>
+          <span>双周期走势参考</span>
         </button>
         <div style={{ flex: 1, height: '1px', background: 'var(--border, rgba(255,255,255,0.08))' }} />
       </div>
-      <SingleFundPrediction fundCode={fund.code} fundName={fund.name} autoLoad={!!loadedFunds[fund.code]} />
+      <SingleFundPrediction
+        fundCode={fund.code}
+        fundName={fund.name}
+        autoLoad={!!loadedFunds[fund.code]}
+        onRequestLoad={() => setLoadedFunds((prev) => ({ ...prev, [fund.code]: true }))}
+      />
     </div>
   );
 }
