@@ -15,6 +15,7 @@ import { generateFallbackPrediction } from './fallback-prediction';
 import { invokeFundPredictionLLM } from './llm-prediction-client';
 import { buildFundPredictionPrompt } from './prediction-prompt';
 import { validateAndRepairPredictionResult } from './result-validator';
+import { buildNextTradingDayModel } from './next-day-model';
 import { recordPredictionHistory, getPredictionHistory } from './prediction-history';
 
 const settleValue = (results, index, fallback) =>
@@ -96,7 +97,10 @@ export async function predictFundWithLLM(code, options = {}) {
       useLLM,
       'dual',
       input?.technical?.ma5,
-      input?.technical?.ma20
+      input?.technical?.ma20,
+      input?.technical?.rsi6,
+      input?.technical?.macdHistogram,
+      input?.technical?.bollingerPctB
     );
     const result = await qc.fetchQuery({
       queryKey: key,
@@ -125,6 +129,7 @@ export {
   generateFallbackPrediction,
   invokeFundPredictionLLM,
   validateAndRepairPredictionResult,
+  buildNextTradingDayModel,
   recordPredictionHistory,
   getPredictionHistory
 };

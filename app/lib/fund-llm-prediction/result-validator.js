@@ -1,6 +1,7 @@
 import { isArray, isNil, isObject, isString } from 'lodash';
 
 import { clamp, directionFromReturn, finiteNumber, generateFallbackPrediction, round } from './fallback-prediction';
+import { buildNextTradingDayModel } from './next-day-model';
 
 const DIRECTIONS = ['bullish', 'slightly_bullish', 'neutral', 'slightly_bearish', 'bearish', 'uncertain'];
 const ACTIONS = ['increase', 'reduce', 'hold', 'watch', 'switch', 'uncertain'];
@@ -104,6 +105,9 @@ export function validateAndRepairPredictionResult(llmResult, compressedInput = {
       hiddenPosition: round(rawComponents.hiddenPosition ?? rawComponents.hiddenPositionContribution, 4),
       technical: round(rawComponents.technical ?? rawComponents.technicalContribution, 4),
       market: round(rawComponents.market ?? rawComponents.marketContribution, 4),
+      nextDayModel: isObject(rawComponents.nextDayModel)
+        ? rawComponents.nextDayModel
+        : fallback.components?.nextDayModel || {},
       residual: round(rawComponents.residual ?? rawComponents.residualCorrection, 4)
     };
     const warnings = [...(compressedInput?.dataQuality?.warnings || [])];
@@ -117,6 +121,32 @@ export function validateAndRepairPredictionResult(llmResult, compressedInput = {
       missingCount,
       null
     );
+    const localNextModel = buildNextTradingDayModel(
+      { ...compressedInput, components: { holdingContribution: localHoldingContribution } },
+      stockPredictions
+    );
+    const valuationPct = finiteNumber(compressedInput?.valuation?.gszzl, 0);
+    const llmExpected = nextTradingDay.expectedReturnPct;
+    const localExpected = localNextModel.expectedReturnPct;
+    const valuationAnchored = Math.abs(llmExpected - valuationPct) < 0.08 && Math.abs(valuationPct) >= 0.35;
+    if (valuationAnchored || Math.abs(llmExpected - localExpected) > 0.8) {
+      const repairedExpected = round(localExpected * 0.7 + llmExpected * 0.3, 4);
+      nextTradingDay.expectedReturnPct = repairedExpected;
+      nextTradingDay.direction = directionFromReturn(
+        repairedExpected,
+        Math.min(nextTradingDay.confidence, localNextModel.confidence)
+      );
+      nextTradingDay.expectedRangePct = normalizeRange(nextTradingDay.expectedRangePct, repairedExpected);
+      nextTradingDay.confidence = round(Math.min(nextTradingDay.confidence, localNextModel.confidence, 0.58), 4);
+      nextTradingDay.reasons = [
+        '本地校验检测到次日预测过度贴近当天涨跌或偏离轻量技术模型，已按技术集成模型降权修正',
+        ...localNextModel.reasons,
+        ...nextTradingDay.reasons
+      ];
+      nextTradingDay.risks = [...nextTradingDay.risks, '次日结果已降低当天估值信号权重，仍不保证方向准确'];
+      components.nextDayModel = localNextModel.components;
+      warnings.push('次日预测已按轻量技术模型修正，避免过度跟随当天涨跌');
+    }
     const shortTerm = normalizeHorizon(llmResult.horizons.shortTerm, fallback.horizons.shortTerm, missingCount, 5);
     const avgConfidence = (nextTradingDay.confidence + shortTerm.confidence) / 2;
     const rawAdvice = isObject(llmResult.rebalanceAdvice) ? llmResult.rebalanceAdvice : {};

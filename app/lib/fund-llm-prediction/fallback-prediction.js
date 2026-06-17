@@ -1,5 +1,7 @@
 import { isArray, isNil, isNumber } from 'lodash';
 
+import { buildNextTradingDayModel } from './next-day-model';
+
 const DIRECTIONS = {
   strongUp: 'bullish',
   up: 'slightly_bullish',
@@ -174,15 +176,17 @@ export function generateFallbackPrediction(input = {}) {
     const missingCount = isArray(input?.dataQuality?.missing) ? input.dataQuality.missing.length : 0;
     let baseConfidence = clamp(
       0.2 +
-        (isNumber(input?.valuation?.gszzl) ? 0.25 : 0) +
-        (stockPredictions.length ? 0.15 : 0) +
+        (isNumber(input?.valuation?.gszzl) ? 0.1 : 0) +
+        (stockPredictions.length ? 0.12 : 0) +
         (market.valid ? 0.08 : 0),
       0,
-      0.75
+      0.7
     );
     if (input?.dataQuality?.holdingsIsLastQuarter) baseConfidence -= 0.08;
-    if (missingCount >= 4) baseConfidence = Math.min(baseConfidence, 0.4);
-    const nextExpected = round(valuation * 0.58 + holdingContribution * 0.24 + hiddenPosition * 0.1 + market.value, 4);
+    if (missingCount >= 4) baseConfidence = Math.min(baseConfidence, 0.38);
+    const nextModel = buildNextTradingDayModel({ ...input, components: { holdingContribution } }, stockPredictions);
+    const nextExpected = nextModel.expectedReturnPct;
+    baseConfidence = Math.min(baseConfidence + nextModel.confidence * 0.35, 0.68);
     const returns = [input?.periodReturns?.week, input?.periodReturns?.month, input?.periodReturns?.month3].filter(
       (v) => Number.isFinite(Number(v))
     );
@@ -192,8 +196,8 @@ export function generateFallbackPrediction(input = {}) {
       expectedReturnPct: nextExpected,
       confidence: baseConfidence,
       volatility20d: input?.technical?.volatility20d,
-      reasons: ['实时估值、重仓股增强特征和市场指数用于次日情景判断'],
-      risks: ['规则兜底结果未调用 LLM，仅用于结构化参考'],
+      reasons: nextModel.reasons,
+      risks: ['规则兜底结果未调用 LLM，仅用于结构化参考', ...nextModel.risks],
       horizonDays: null
     });
     const short = buildHorizon({
@@ -214,6 +218,7 @@ export function generateFallbackPrediction(input = {}) {
       hiddenPosition,
       technical: round(tech.value, 4),
       market: round(market.value, 4),
+      nextDayModel: nextModel.components,
       residual: 0
     };
     return {
